@@ -1,0 +1,156 @@
+17 keypoint model:-
+
+0: "nose"
+1: "leftEye"
+2: "rightEye"
+3: "leftEar"
+4: "rightEar"
+5: "leftShoulder"
+6: "rightShoulder"
+7: "leftElbow"
+8: "rightElbow"
+9: "leftWrist"
+10: "rightWrist"
+11: "leftHip"
+12: "rightHip"
+13: "leftKnee"
+14: "rightKnee"
+15: "leftAnkle"
+16: "rightAnkle"
+
+[5,7,9,11,13,15,6,8,10,12,14,16]
+
+16 keypoint model:-
+
+head = (9,)
+shoulder = (12, 13)
+elbow = (11, 14)
+wrist = (10, 15)
+hip = (2, 3)
+knee = (1, 4)
+ankle = (0, 5)
+all = (12, 13, 11, 14, 10, 15, 2, 3, 1, 4, 0, 5)
+right_leg = (0, 1, 2, 8)
+left_leg = (5, 4, 3, 8)
+backbone = (8, 9)
+right_arm = (10, 11, 12, 8)
+left_arm = (15, 14, 13, 8)
+
+[12, 11, 10, 2, 1, 0, 13, 14, 15, 3, 4, 5]
+
+LSP Joint List:
+
+Right ankle
+Right knee
+Right hip
+Left hip
+Left knee
+Left ankle
+Right wrist
+Right elbow
+Right shoulder
+Left shoulder
+Left elbow
+Left wrist
+Neck
+Head top
+
+UDA joint indices order:
+(0, 1, 2, 3, 4, 5, 13, 13, 12, 13, 6, 7, 8, 9, 10, 11)
+
+SURREAL Joint List
+
+    return ['hips', #0
+            'leftUpLeg', #1
+            'rightUpLeg', #2
+            'spine', #3
+            'leftLeg', #4
+            'rightLeg', #5
+            'spine1', #6
+            'leftFoot', #7
+            'rightFoot', #8
+            'spine2', #9
+            'leftToeBase', #10
+            'rightToeBase', #11
+            'neck', #12
+            'leftShoulder', #13
+            'rightShoulder', #14
+            'head', #15
+            'leftArm', #16
+            'rightArm', #17
+            'leftForeArm', #18
+            'rightForeArm', #19
+            'leftHand', #20
+            'rightHand', #21
+            'leftHandIndex1', #22
+            'rightHandIndex1'] #23
+
+UDA joint indices order:
+(7, 4, 1, 2, 5, 8, 0, 9, 12, 15, 20, 18, 13, 14, 19, 21)
+
+Deduced Order:
+
+leftFoot, leftLeg, leftUpLeg, rightUpLeg, rightLeg, rightFoot
+hips, spine2, neck, head,
+leftHand, leftForeArm, leftShoulder
+rightShoulder, rightForeArm, rightHand
+
+SyRIP Joints List
+
+"keypoints": [
+    "nose","left_eye","right_eye","left_ear","right_ear",
+    "left_shoulder","right_shoulder","left_elbow","right_elbow",
+    "left_wrist","right_wrist","left_hip","right_hip",
+    "left_knee","right_knee","left_ankle","right_ankle"]
+
+UDA joint indices order:
+15, 13, 11, 12, 14, 16, 0, 0, 0, 0, 9, 7, 5, 6, 8, 10
+
+MINIRGBD Joints List
+
+global
+leftThigh #1
+rightThigh #2
+spine #3
+leftCalf #4
+rightCalf #5
+spine1 #6
+leftFoot #7
+rightFoot #8
+spine2 #9
+leftToes #10
+rightToes #11
+neck #12
+leftShoulder #13
+rightShoulder #14
+head #15
+leftUpperArm #16
+rightUpperArm #17
+leftForeArm #18
+rightForeArm #19
+leftHand #20
+rightHand #21
+leftFingers #22
+rightFingers #23
+noseVertex #24
+
+UDA joint indices order:
+SURREAL: 7, 4, 1, 2, 5, 8, 0, 9, 12, 15, 20, 18, 13, 14, 19, 21
+MINIRGBD: 7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21
+
+Action List:-
+
+Code:-
+1. Run without source (SFDA): make loss_s=0
+2. Train manifold prior: clean-split (ground truth), noisy_split (generate from clean split), calc. L1 distances.
+3. Finish RL
+4. Make pvt github repo and push code there.
+
+Paper:- (Use Dripta da s paper in parallel)
+1. Introduction
+2. Related Works: Human Pose Estimation, Infant Pose Estimation, UDA in Pose Estimation (RegDA, CCCL)
+3. Methodology: make diagram, 
+4. Results (must be extended atleast till 6pgs): 
+
+Presentation:-
+Update slides + borrow stuff from proj proposal + start ee243 poster

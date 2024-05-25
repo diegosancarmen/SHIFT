@@ -39,12 +39,13 @@ class LSP(Body16KeypointDataset):
         LSP is only used for target domain. Due to the small dataset size, the whole dataset is used
         no matter what ``split`` is. Also, the transform is fixed.
     """
-    def __init__(self, root, split='train', task='all', download=True, image_size=(256, 256), transforms=None, **kwargs):
+    def __init__(self, root, split='train', task='all', download=False, image_size=(256, 256), transforms=None, **kwargs):
         if download:
             download_data(root, "images", "lsp_dataset.zip",
                           "https://cloud.tsinghua.edu.cn/f/46ea73c89abc46bfb125/?dl=1")
         else:
-            check_exits(root, "lsp")
+            #check_exits(root, "lsp")
+            pass
 
         assert split in ['train', 'test', 'all']
         self.split = split

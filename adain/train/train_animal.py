@@ -1,7 +1,7 @@
 import argparse
 import sys
 sys.path.append('..')
-sys.path.append('path/to/UDAPE/adain')
+sys.path.append('/home/eegrad/sbose/pose_estimation/UDA_PoseEstimation/adain')
 from pathlib import Path
 import os
 import torch
@@ -11,9 +11,9 @@ import torch.utils.data as data
 from PIL import Image, ImageFile
 from torchvision import transforms
 from tqdm import tqdm
-from net import decoder, vgg, Net
+from UDA_PoseEstimation.adain.net import decoder, vgg, Net
 from torchvision.utils import save_image
-import skimage.io
+#Simport skimage.io
 import numpy as np
 from lib.data import ForeverDataIterator
 from lib import datasets

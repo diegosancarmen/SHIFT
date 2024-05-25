@@ -104,6 +104,7 @@ class SURREAL(Body16KeypointDataset):
         target = torch.from_numpy(target)
         target_weight = torch.from_numpy(target_weight)
 
+
         # normalize 3D pose:
         # put middle finger metacarpophalangeal (MCP) joint in the center of the coordinate system
         # and make distance between wrist and middle finger MCP joint to be of length 1

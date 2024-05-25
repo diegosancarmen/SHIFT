@@ -2,9 +2,14 @@
 # https://github.com/CuriousAI/mean-teacher/tree/master/pytorch
 
 import numpy as np
+import os
+import re
 import torch
 import torch.nn.functional as F
 from torch.optim import Optimizer
+import matplotlib
+import matplotlib.pyplot as plt
+matplotlib.use('Agg')  # Use the Agg backend for non-interactive plotting
 
 class OldWeightEMA (object):
     """
@@ -23,7 +28,6 @@ class OldWeightEMA (object):
         for p, src_p in zip(self.target_params, self.source_params):
             p.data.mul_(self.alpha)
             p.data.add_(src_p.data * one_minus_alpha)
-
 
 def sigmoid_rampup(current, rampup_length):
     """Exponential rampup from https://arxiv.org/abs/1610.02242"""
@@ -145,7 +149,28 @@ def generate_prior_map(prior, preds, gamma=2, sigma=2, epsilon=-10e10, v3=False)
     return targets
 
 
+def calculate_s_max(segmentation_maps):
+    batch_size = segmentation_maps.size(0)
+    cardinalities = [torch.sum(segmentation_maps[i]) for i in range(batch_size)]
+    s_max = max(cardinalities)
+    return s_max
 
+def plot_lambda_vs_epochs(lambda_c_values, epochs, save_path):
+    # Create directory if it does not exist
+    # if not os.path.exists(save_path):
+    #     os.makedirs(save_path)
 
+    save_path = re.sub(r'/\d+/', '/', save_path)
+    # Plot the lambda_c vs. epochs curve
+    plt.figure(figsize=(10, 6))
+    plt.plot(epochs, lambda_c_values, label='lambda')
+    plt.xlabel('Adaptation Epochs')
+    plt.ylabel('lambda')
+    plt.title('Exponential Decay of Lambda')
+    plt.legend()
+    plt.grid(True)
 
-
+    # Save the plot to the specified directory
+    #save_path = os.path.join(save_dir, filename)
+    plt.savefig(save_path)
+    plt.close()

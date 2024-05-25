@@ -17,7 +17,7 @@ from torchvision.transforms import Compose, ToPILImage
 import torch.nn.functional as F
 import torchvision.transforms.functional as tF
 import lib.models as models
-from lib.models.loss import JointsMSELoss, ConsLoss
+from lib.models.loss import JointsMSELoss, ConsLoss, CurriculumLearningLoss
 import lib.datasets as datasets
 import lib.transforms.keypoint_detection as T
 from lib.transforms import Denormalize
@@ -26,6 +26,7 @@ from lib.meter import AverageMeter, ProgressMeter, AverageMeterDict, AverageMete
 from lib.keypoint_detection import accuracy
 from lib.logger import CompleteLogger
 from lib.models import Style_net
+from lib.models.seg_net import SegNet, get_segmentation_masks
 from utils import *
 
 import warnings
@@ -142,8 +143,12 @@ def main(args: argparse.Namespace):
     else:
         style_net = None
     
+    #Initialize segmentation model.
+    seg_model = SegNet(num_classes=21, pretrained=True).to(device)
+
     criterion = JointsMSELoss()
     con_criterion = ConsLoss()
+    cl_criterion = CurriculumLearningLoss()
 
     if args.SGD:
         stu_optimizer = SGD(student.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.0001, nesterov=True)
@@ -186,15 +191,19 @@ def main(args: argparse.Namespace):
         ToPILImage()
     ])
 
-    def visualize(image, keypoint2d, name):
+    def visualize(image, seg, keypoint2d, name_kp, name_seg): #image, seg, keypoints, filename_kp, filename_seg
         """
         Args:
             image (tensor): image in shape 3 x H x W
             keypoint2d (tensor): keypoints in shape K x 2
             name: name of the saving image
         """
-        train_source_dataset.visualize(tensor_to_image(image),
-                                       keypoint2d, logger.get_image_path("{}.jpg".format(name)))
+        if seg is not None and name_seg is not None:
+            train_source_dataset.visualize(tensor_to_image(image), seg,
+                                       keypoint2d, logger.get_image_path(name_kp), logger.get_image_path(name_seg))
+        else:
+            train_source_dataset.visualize(tensor_to_image(image), None,
+                                       keypoint2d, logger.get_image_path(name_kp), None)
 
     if args.phase == 'test':
         # evaluate on validation set
@@ -208,10 +217,15 @@ def main(args: argparse.Namespace):
 
     # start training
     best_acc = 0
+    
+    lambda_c_values = []
+    epochs = []
 
     for epoch in range(start_epoch, args.epochs):
         logger.set_epoch(epoch)
         lr_scheduler.step()
+
+        lambda_c = torch.exp(torch.tensor(-epoch / args.temp_cl, dtype=torch.float))
 
         # train for one epoch
         if epoch < args.pretrain_epoch:
@@ -224,8 +238,10 @@ def main(args: argparse.Namespace):
                 student.load_state_dict(pretrained_dict, strict=False)
                 teacher.load_state_dict(pretrained_dict, strict=False)
 
-            train(train_source_iter, train_target_iter, student, teacher, style_net, criterion, con_criterion, 
-                    stu_optimizer, tea_optimizer, epoch,visualize if args.debug else None, args)
+            train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, criterion, con_criterion, cl_criterion,
+                    stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
+            lambda_c_values.append(lambda_c.item())
+            epochs.append(epoch+1)
 
         # evaluate on validation set
         if epoch < args.pretrain_epoch:
@@ -251,6 +267,7 @@ def main(args: argparse.Namespace):
         for name, acc in target_val_acc.items():
             logger.write("{}: {:4.3f}".format(name, acc))
 
+    plot_lambda_vs_epochs(lambda_c_values, epochs, logger.get_image_path(f"lambda_vs_epochs.png"))
     logger.close()
 
 def pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch: int, visualize, args: argparse.Namespace):
@@ -310,22 +327,22 @@ def pretrain(train_source_iter, train_target_iter, student, style_net, criterion
         if i % args.print_freq == 0:
             progress.display(i)
             if visualize is not None:
-                visualize(x_s[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i))
-                visualize(x_s[0], meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i))
+                visualize(x_s[0], None, pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), None)
+                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
 
-
-def train(train_source_iter, train_target_iter, student, teacher, style_net, criterion, con_criterion,
-          stu_optimizer, tea_optimizer, epoch: int, visualize, args: argparse.Namespace):
+def train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, criterion, con_criterion, cl_criterion,
+          stu_optimizer, tea_optimizer, lambda_c, epoch: int, visualize, args: argparse.Namespace):
     batch_time = AverageMeter('Time', ':4.2f')
     data_time = AverageMeter('Data', ':3.1f')
     losses_all = AverageMeter('Loss (all)', ":.4e")
     losses_s = AverageMeter('Loss (s)', ":.4e")
     losses_c = AverageMeter('Loss (c)', ":.4e")
+    w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
     acc_s = AverageMeter("Acc (s)", ":3.2f")
 
     progress = ProgressMeter(
         args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_s, losses_c, acc_s],
+        [batch_time, data_time, losses_all, losses_s, losses_c, w_losses_c, acc_s],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -351,6 +368,12 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, cri
         label_t = meta_t_stu['target_ori'].to(device)
         weight_t = meta_t_stu['target_weight_ori'].to(device)
 
+        # Get segmentation maps and scores
+        seg_maps = get_segmentation_masks(seg_model, x_t_stu)
+        seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
+        s_max = calculate_s_max(seg_maps)
+        visibility_scores = [torch.sum(seg_maps[i]) / s_max for i in range(seg_maps.size(0))]
+
         # measure data loading time
         data_time.update(time.time() - end)
 
@@ -367,7 +390,9 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, cri
                 x_t_teas = [style_net(x_t_tea, x_s_ori, _a)[2] for x_t_tea in x_t_teas]
                 x_t_teas = [torch.maximum(torch.minimum(x_t_tea.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2) for x_t_tea in x_t_teas]
 
+            #PSEUDO LABELS
             y_t_teas = [teacher(x_t_tea) for x_t_tea in x_t_teas] # softmax on w, h
+            #PSEUDO LABELS AFTER NORMALIZATION AND RECON
             y_t_tea_recon = torch.zeros_like(y_t_teas[0]).cuda() # b, c, h, w
             tea_mask = torch.zeros(y_t_teas[0].shape[:2]).cuda() # b, c
             for ind in range(x_t_teas[0].size(0)):
@@ -434,7 +459,8 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, cri
                 temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
                 y_t_stu_recon[ind] = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
 
-            loss_s = criterion(y_s, label_s, weight_s)
+            # loss_s = criterion(y_s, label_s, weight_s)
+            loss_s = 0.
 
             activates = y_t_tea_recon.amax(dim=(2,3))
             y_t_tea_recon = rectify(y_t_tea_recon, sigma=args.sigma)
@@ -442,8 +468,10 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, cri
             tea_mask = tea_mask * activates>mask_thresh
             
             loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
+            weighted_loss_c = cl_criterion(y_t_stu_recon, y_t_tea_recon, visibility_scores, tea_mask=tea_mask)
 
-        loss_all = loss_s + args.lambda_c * loss_c
+        #loss_all = loss_s + args.lambda_c * loss_c
+        loss_all = lambda_c * weighted_loss_c + (1 - lambda_c) * loss_c + loss_s
 
         scaler.scale(loss_all).backward()
         scaler.step(stu_optimizer)
@@ -458,7 +486,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, cri
         losses_all.update(loss_all, x_s.size(0))
         losses_s.update(loss_s, x_s.size(0))
         losses_c.update(loss_c, x_s.size(0))
-
+        w_losses_c.update(weighted_loss_c, x_s.size(0))
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
@@ -466,8 +494,8 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, cri
         if i % args.print_freq == 0:
             progress.display(i)
             if visualize is not None:
-                visualize(x_s[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i))
-                visualize(x_s[0], meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i))
+                visualize(x_s[0], seg_maps[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), "target_{}_mask.jpg".format(i))
+                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
 
 
 def validate(val_loader, model, criterion, visualize, args: argparse.Namespace):
@@ -506,8 +534,8 @@ def validate(val_loader, model, criterion, visualize, args: argparse.Namespace):
             if i % args.val_print_freq == 0:
                 progress.display(i)
                 if visualize is not None:
-                    visualize(x[0], pred[0] * args.image_size / args.heatmap_size, "val_{}_pred.jpg".format(i))
-                    visualize(x[0], meta['keypoint2d'][0], "val_{}_label.jpg".format(i))
+                    visualize(x[0], None, pred[0] * args.image_size / args.heatmap_size, "val_{}_pred.jpg".format(i), None)
+                    visualize(x[0], None, meta['keypoint2d'][0], "val_{}_label.jpg".format(i), None)
 
     return val_loader.dataset.group_accuracy(acc.average())
 
@@ -577,6 +605,8 @@ if __name__ == '__main__':
                         help='backbone architecture: ' +
                              ' | '.join(architecture_names) +
                              ' (default: pose_resnet101)')
+    parser.add_argument('--a_seg', metavar='ARCH', default='deeplabv3_r50',
+                        help='segmentation architecture: ' + ' (default: deeplabv3_r50)')
 
     parser.add_argument("--resume", type=str, default=None,
                         help="where restore model parameters from.")
@@ -586,7 +616,7 @@ if __name__ == '__main__':
                         help="where restore style_net model parameters from.")
 
     # training parameters
-    parser.add_argument('-b', '--batch-size', default=16, type=int,
+    parser.add_argument('-b', '--batch-size', default=32, type=int,
                         metavar='N',
                         help='mini-batch size (default: 32)')
     parser.add_argument('--test-batch', default=32, type=int,
@@ -595,6 +625,8 @@ if __name__ == '__main__':
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--lambda_c', default=1., type=float)
+    parser.add_argument('--temp_cl', default=10., type=float)
+    parser.add_argument('--seg_threshold', default=0.5, type=float)
     parser.add_argument('--teacher_alpha', default=0.999, type=float)
     parser.add_argument('--lr-step', default=[45, 60], type=tuple, help='parameter for lr scheduler')
     parser.add_argument('--lr-factor', default=0.1, type=float, help='parameter for lr scheduler')
@@ -606,7 +638,7 @@ if __name__ == '__main__':
                         help='Number of iterations per epoch')
     parser.add_argument('-p', '--print-freq', default=100, type=int,
                         metavar='N', help='print frequency (default: 100)')
-    parser.add_argument('--val-print-freq', default=2000, type=int,
+    parser.add_argument('--val-print-freq', default=100, type=int,
                         metavar='N', help='print frequency (default: 100)')
     parser.add_argument('--seed', default=None, type=int,
                         help='seed for initializing training. ')
@@ -630,4 +662,3 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
     main(args)
-

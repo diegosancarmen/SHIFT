@@ -8,6 +8,8 @@ from torch.utils.data.dataset import Dataset
 from webcolors import name_to_rgb
 import cv2
 
+# from JointsDataset import JointsDataset
+
 
 class KeypointDataset(Dataset, ABC):
     """A generic dataset class for image keypoint detection
@@ -39,7 +41,7 @@ class KeypointDataset(Dataset, ABC):
     def __len__(self):
         return len(self.samples)
 
-    def visualize(self, image, keypoints, filename):
+    def visualize(self, image, seg, keypoints, filename_kp, filename_seg):
         """Visualize an image with its keypoints, and store the result into a file
 
         Args:
@@ -59,7 +61,17 @@ class KeypointDataset(Dataset, ABC):
                             thickness=3)
             for keypoint in keypoints:
                 cv2.circle(image, (int(keypoint[0]), int(keypoint[1])), 3, name_to_rgb('black'), 1)
-        cv2.imwrite(filename, image)
+        cv2.imwrite(filename_kp, image)
+        if seg is not None and filename_seg is not None:
+            # Visualize segmentation maps
+            seg = seg.squeeze().cpu().numpy()
+            if len(seg.shape) == 2:  # Single channel
+                seg = (seg * 255).astype(np.uint8)
+            elif len(seg.shape) >= 3:  # Multi-channel
+                seg = np.argmax(seg, axis=0).astype(np.uint8) * (255 // seg.shape[0])
+
+            seg_colored = cv2.applyColorMap(seg, cv2.COLORMAP_JET)
+            cv2.imwrite(filename_seg, seg_colored)
 
     def group_accuracy(self, accuracies):
         """ Group the accuracy of K keypoints into different kinds.
@@ -75,8 +87,7 @@ class KeypointDataset(Dataset, ABC):
         for name, keypoints in self.keypoints_group.items():
             grouped_accuracies[name] = sum([accuracies[idx] for idx in keypoints]) / len(keypoints)
         return grouped_accuracies
-
-
+        
 class Body16KeypointDataset(KeypointDataset, ABC):
     """
     Dataset with 16 body keypoints.

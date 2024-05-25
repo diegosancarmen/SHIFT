@@ -130,6 +130,36 @@ class ConsLoss(nn.Module):
             loss_map = loss_map[valid_mask]
 
         return loss_map.mean()
+    
+class CurriculumLearningLoss(nn.Module):
+    def __init__(self):
+        super(CurriculumLearningLoss, self).__init__()
+
+    def forward(self, stu_out, tea_out, visibility_scores, valid_mask=None, tea_mask=None):
+        """
+        Args:
+            stu_out (torch.Tensor): Student output tensor of shape (batch_size, channels, height, width)
+            tea_out (torch.Tensor): Teacher output tensor of shape (batch_size, channels, height, width)
+            visibility_scores (list of torch.Tensor): List of visibility scores for each sample in the batch
+            valid_mask (torch.Tensor, optional): Mask tensor for valid areas, shape (batch_size, height, width)
+            tea_mask (torch.Tensor, optional): Mask tensor for teacher areas, shape (batch_size, channels)
+        Returns:
+            torch.Tensor: The weighted loss value
+        """
+        diff = stu_out - tea_out # b, c, h, w
+        if tea_mask is not None:
+            diff *= tea_mask[:, :, None, None] # b, c, h, w
+        loss_map = torch.mean((diff) ** 2, dim=1) # b, h, w
+        if valid_mask is not None:
+            loss_map = loss_map[valid_mask]
+
+        # Apply visibility scores
+        batch_size = loss_map.size(0)
+        weighted_loss = 0.0
+        for i in range(batch_size):
+            weighted_loss += visibility_scores[i] * loss_map[i].mean()
+
+        return weighted_loss / batch_size
 
 class ConsSoftmaxLoss(nn.Module):
 

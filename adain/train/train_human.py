@@ -1,7 +1,7 @@
 import argparse
 import sys
 sys.path.append('..')
-sys.path.append('path/to/UDAPE/adain')
+sys.path.append('/home/eegrad/sbose/pose_estimation/UDA_PoseEstimation/adain')
 from pathlib import Path
 import os
 import torch
@@ -13,14 +13,20 @@ from torchvision import transforms
 from tqdm import tqdm
 from net import decoder, vgg, Net
 from torchvision.utils import save_image
+import torchvision.transforms.functional as F
 import cv2
-import skimage.io
+#import skimage.io
 import numpy as np
 from lib.data import ForeverDataIterator
 from lib import datasets
 from lib.transforms import keypoint_detection as T
 from torch.utils.data import DataLoader
 from tqdm import tqdm
+
+import warnings
+
+# Ignore UserWarning from torchvision
+warnings.filterwarnings("ignore", category=UserWarning)
 
 torch.manual_seed(0)
 np.random.seed(0)
@@ -150,10 +156,11 @@ train_source_dataset = source_dataset(root=args.source_root, transforms=train_tr
                                         image_size=image_size, heatmap_size=heatmap_size)
 train_source_loader = DataLoader(train_source_dataset, batch_size=4,
                                     shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
-target_dataset = datasets.__dict__[args.target]
-train_target_dataset = target_dataset(root=args.target_root, transforms_base=base_transform,
+target_dataset = datasets.__dict__[args.target] # 'lib.datasets.minirgbd.MiniRGBD'
+train_target_dataset = target_dataset(root=args.target_root, heatmap_size=heatmap_size, transforms_base=base_transform,
                                         transforms_stu=tgt_train_transform_stu, transforms_tea=tgt_train_transform_tea, 
-                                        image_size=image_size, heatmap_size=heatmap_size)
+                                        subset='train', gt2d=False, read_confidence=False, sample_interval=None, flip=False,
+                                        cond_3d_prob=0, rot=False, num_joint=12)
 train_target_loader = DataLoader(train_target_dataset, batch_size=4,
                                     shuffle=True, num_workers=4, pin_memory=True, drop_last=True)
 train_source_iter = ForeverDataIterator(train_source_loader)
@@ -190,8 +197,10 @@ i = 0
 
 for e in tqdm(range(args.max_iter)):
     source_image, _, _, _ = next(train_source_iter)
-    _, _, _, _, target_images, _, _, _ = next(train_target_iter)
-    target_image = target_images[0]
+    _, _, _, _, target_images, _, _, _ = next(train_target_iter) 
+    # target_images, _,_,_ = next(train_target_iter) #image, target, target_weight, meta, K
+    target_image = target_images[0] # Original
+    #target_image = target_images
 
     if np.random.rand() > 0.5:
         content_images = source_image
