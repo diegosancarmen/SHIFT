@@ -9,6 +9,9 @@ import torch
 import scipy
 from PIL import Image
 
+import torch
+import torch.nn as nn
+
 def generate_target(joints, joints_vis, heatmap_size, sigma, image_size):
     """Generate heatamap for joints.
 
@@ -322,6 +325,58 @@ def color_normalize(x, mean, std):
     for t, m, s in zip(x, mean, std):
         t.sub_(m)
     return x
+
+def softargmax2d(input, beta=500):
+    *_, h, w = input.shape
+
+    input = input.reshape(*_, h * w)
+    input = nn.functional.softmax(beta * input, dim=-1)
+
+    indices_c, indices_r = np.meshgrid(
+        np.linspace(0, 1, w),
+        np.linspace(0, 1, h),
+        indexing='xy'
+    )
+    indices_r = torch.tensor(np.reshape(indices_r, (-1, h * w))).to(input.device)
+    indices_c = torch.tensor(np.reshape(indices_c, (-1, h * w))).to(input.device)
+
+    result_r = torch.sum((h - 1) * input * indices_r, dim=-1)
+    result_c = torch.sum((w - 1) * input * indices_c, dim=-1)
+
+    result = torch.stack([result_c, result_r], dim=-1)
+    return result
+
+def keypoint_to_orientations(coords):
+    pairs = [
+        [8,9],   #0,-1
+        [2,8],   #1,0
+        [3,8],   #2,0
+        [12,8],  #3,0
+        [13,8],  #4,0
+        [1,2],   #5,1
+        [0,1],   #6,5
+        [4,3],   #7,2
+        [5,4],   #8,7
+        [11,12], #9,3
+        [10,11], #10,9
+        [14,13], #11,4
+        [15,14]  #12,11
+    ]
+    K = len(pairs) 
+    B = coords.shape[0]
+    # get orientations
+    orientations = torch.zeros((B,K,2))
+    for i, pair in enumerate(pairs):
+        a,b = pair
+        vecs = coords[:,b] - coords[:,a]
+        norms = torch.norm(vecs, dim=1).unsqueeze(1)
+        orientations[:,i] = vecs/norms
+    return orientations
+    
+def get_orientations(hmaps):
+    coords = softargmax2d(hmaps)
+    ori = keypoint_to_orientations(coords)
+    return ori
 
 def draw_labelmap_ori(img, pt, sigma, type='Gaussian'):
     # Draw a 2D gaussian

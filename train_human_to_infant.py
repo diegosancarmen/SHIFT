@@ -175,6 +175,7 @@ def main(args: argparse.Namespace):
     # optionally resume from a checkpoint
     start_epoch = 0
     if args.resume:
+        print('Resuming from checkpoint....')
         checkpoint = torch.load(args.resume, map_location='cpu')
         student.load_state_dict(checkpoint['student'])
         teacher.load_state_dict(checkpoint['teacher'])
@@ -345,11 +346,12 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
     losses_s = AverageMeter('Loss (s)', ":.4e")
     losses_c = AverageMeter('Loss (c)', ":.4e")
     w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
+    losses_p = AverageMeter('Weighted_Loss (w_c)', ":.4e")
     acc_s = AverageMeter("Acc (s)", ":3.2f")
 
     progress = ProgressMeter(
         args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_s, losses_c, w_losses_c, acc_s],
+        [batch_time, data_time, losses_all, losses_c, w_losses_c, losses_p, acc_s],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -434,7 +436,8 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                         temp = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
 
                         # randomly select a point to occlude
-                        candidates = torch.arange(0, k)[conf_table[_b]]
+                        #candidates = torch.arange(0, k)[conf_table[_b]]
+                        candidates = torch.arange(0, k).to(conf_table.device)[conf_table[_b]]
                         _c = np.random.choice(candidates)
                         
                         # calculate the occlusion border
@@ -497,6 +500,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         losses_s.update(loss_s, x_s.size(0))
         losses_c.update(loss_c, x_s.size(0))
         w_losses_c.update(weighted_loss_c, x_s.size(0))
+        losses_p.update(loss_p, x_s.size(0))
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
@@ -563,8 +567,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Source Only for Keypoint Detection Domain Adaptation')
     # dataset parameters
-    parser.add_argument('source_root', default='/data/AmitRoyChowdhury/sarosij/lsp', help='root path of the source dataset')
-    parser.add_argument('target_root', default='/data/AmitRoyChowdhury/sarosij/SyRIP', help='root path of the target dataset')
+    parser.add_argument('source_root', default='/data/AmitRoyChowdhury/dripta/surreal_processed', help='root path of the source dataset')
+    parser.add_argument('target_root', default='/data/AmitRoyChowdhury/MINI-RGBD_web', help='root path of the target dataset')
     parser.add_argument('-s', '--source', help='source domain(s)')
     parser.add_argument('-t', '--target', help='target domain(s)')
     parser.add_argument('--target-train', help='target domain(s)')
