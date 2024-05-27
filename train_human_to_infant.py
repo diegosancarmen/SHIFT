@@ -346,7 +346,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
     losses_s = AverageMeter('Loss (s)', ":.4e")
     losses_c = AverageMeter('Loss (c)', ":.4e")
     w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
-    losses_p = AverageMeter('Weighted_Loss (w_c)', ":.4e")
+    losses_p = AverageMeter('Prior Loss (p)', ":.4e")
     acc_s = AverageMeter("Acc (s)", ":3.2f")
 
     progress = ProgressMeter(
@@ -438,10 +438,10 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                         # randomly select a point to occlude
                         #candidates = torch.arange(0, k)[conf_table[_b]]
                         candidates = torch.arange(0, k).to(conf_table.device)[conf_table[_b]]
-                        _c = np.random.choice(candidates)
+                        _c = np.random.choice(candidates.cpu().numpy())
                         
                         # calculate the occlusion border
-                        position = (pred_position[_b, _c] * ratio).astype(np.int) 
+                        position = (pred_position[_b, _c] * ratio).astype(np.int32) 
 
                         left = max(position[1] - args.occlude_size, 0)
                         right = min(position[1] + args.occlude_size, args.image_size)
@@ -652,9 +652,9 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 2)')
     parser.add_argument('--epochs', default=70, type=int, metavar='N',
                         help='number of total epochs to run')
-    parser.add_argument('-i', '--iters-per-epoch', default=500, type=int,
+    parser.add_argument('-i', '--iters-per-epoch', default=500, type=int, #500
                         help='Number of iterations per epoch')
-    parser.add_argument('-p', '--print-freq', default=100, type=int,
+    parser.add_argument('-p', '--print-freq', default=100, type=int, #100
                         metavar='N', help='print frequency (default: 100)')
     parser.add_argument('--val-print-freq', default=100, type=int,
                         metavar='N', help='print frequency (default: 100)')
