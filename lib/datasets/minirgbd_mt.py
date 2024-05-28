@@ -21,15 +21,6 @@ class MiniRGBD_mt(Body16KeypointDataset):
         heatmap_size (tuple): (width, height) of the heatmap. Default: (64, 64)
         sigma (int): sigma parameter when generate the heatmap. Default: 2
         vis (bool): If true, visualize the keypoints.
-    """
-    def __init__(self, root, split='train', transforms_base=None, transforms_stu=None, transforms_tea=None, image_size=(256, 256), heatmap_size=(64, 64), sigma=2, vis=False, **kwargs):
-        self.split = split
-        self.transforms_base = Compose([ResizePad(image_size[0])]) + transforms_base
-        self.transforms_stu = transforms_stu
-        self.transforms_tea = transforms_tea
-        self.vis = vis
-        self.k = 1
-                
         # MINIRGBD Joints List
         # global
         # leftThigh
@@ -56,6 +47,15 @@ class MiniRGBD_mt(Body16KeypointDataset):
         # leftFingers
         # rightFingers
         # noseVertex
+    """
+    def __init__(self, root, split='train', transforms_base=None, transforms_stu=None, transforms_tea=None, image_size=(256, 256), heatmap_size=(64, 64), sigma=2, vis=False, **kwargs):
+        self.split = split
+        self.transforms_base = Compose([ResizePad(image_size[0])]) + transforms_base
+        self.transforms_stu = transforms_stu
+        self.transforms_tea = transforms_tea
+        self.vis = vis
+        self.k = 1
+                
         self.joints_index = (7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21)
         self.visible = np.ones(16, dtype=np.float32)
 

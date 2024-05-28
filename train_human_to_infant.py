@@ -39,6 +39,285 @@ device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 recover_min = torch.tensor([-2.1179, -2.0357, -1.8044]).to(device)
 recover_max = torch.tensor([2.2489, 2.4285, 2.64]).to(device)
 
+def pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch: int, visualize, args: argparse.Namespace):
+    batch_time = AverageMeter('Time', ':4.2f')
+    data_time = AverageMeter('Data', ':3.1f')
+    losses_all = AverageMeter('Loss (all)', ":.4e")
+    losses_s = AverageMeter('Loss (s)', ":.4e")
+    acc_s = AverageMeter("Acc (s)", ":3.2f")
+
+    progress = ProgressMeter(
+        args.iters_per_epoch,
+        [batch_time, data_time, losses_all, losses_s, acc_s],
+        prefix="Epoch: [{}]".format(epoch))
+
+    # switch to train mode
+    student.train()
+
+    end = time.time()
+    scaler = torch.cuda.amp.GradScaler()
+
+    for i in range(args.iters_per_epoch):
+        stu_optimizer.zero_grad()
+
+        x_s, label_s, weight_s, meta_s = next(train_source_iter)
+        x_s = x_s.to(device)
+        label_s = label_s.to(device)
+        weight_s = weight_s.to(device)
+
+        if style_net is not None and args.s2t_freq > np.random.rand():
+            with torch.no_grad():
+                _, _, _, _ , x_ts, _, _ , _= next(train_target_iter)
+                x_t = x_ts[0].to(device)
+                _a = np.random.uniform(*args.s2t_alpha)
+                x_s = style_net(x_s, x_t, _a)[2]
+                x_s = torch.maximum(torch.minimum(x_s.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2)
+        # measure data loading time
+        data_time.update(time.time() - end)
+
+        with torch.cuda.amp.autocast():
+            y_s = student(x_s)
+            loss_s = criterion(y_s, label_s, weight_s)
+
+        loss_all = loss_s 
+        scaler.scale(loss_all).backward()
+        scaler.step(stu_optimizer)
+        scaler.update()
+
+        _, avg_acc_s, cnt_s, pred_s = accuracy(y_s.detach().cpu().numpy(),
+                                               label_s.detach().cpu().numpy())
+        acc_s.update(avg_acc_s, cnt_s)
+        losses_all.update(loss_all, x_s.size(0))
+        losses_s.update(loss_s, x_s.size(0))
+
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if i % args.print_freq == 0:
+            progress.display(i)
+            if visualize is not None:
+                visualize(x_s[0], None, pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), None)
+                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
+
+def train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, prior, criterion, con_criterion, cl_criterion,
+          stu_optimizer, tea_optimizer, lambda_c, epoch: int, visualize, args: argparse.Namespace):
+    batch_time = AverageMeter('Time', ':4.2f')
+    data_time = AverageMeter('Data', ':3.1f')
+    losses_all = AverageMeter('Loss (all)', ":.4e")
+    losses_s = AverageMeter('Loss (s)', ":.4e")
+    losses_c = AverageMeter('Loss (c)', ":.4e")
+    w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
+    losses_p = AverageMeter('Prior Loss (p)', ":.4e")
+    acc_s = AverageMeter("Acc (s)", ":3.2f")
+
+    progress = ProgressMeter(
+        args.iters_per_epoch,
+        [batch_time, data_time, losses_all, losses_c, w_losses_c, losses_p, acc_s],
+        prefix="Epoch: [{}]".format(epoch))
+
+    # switch to train mode
+    student.train()
+    teacher.train()
+
+    end = time.time()
+    scaler = torch.cuda.amp.GradScaler()
+
+    for i in range(args.iters_per_epoch):
+        stu_optimizer.zero_grad()
+
+        x_s, label_s, weight_s, meta_s = next(train_source_iter)
+        x_t_stu, _, _, meta_t_stu, x_t_teas, _, _, meta_t_tea = next(train_target_iter)
+
+        x_s = x_s.to(device)
+        x_s_ori = x_s.clone()
+        x_t_stu = x_t_stu.to(device)
+        x_t_teas = [x_t_tea.to(device) for x_t_tea in x_t_teas]
+        x_t_teas_ori = [x_t_tea.clone() for x_t_tea in x_t_teas]
+        label_s = label_s.to(device)
+        weight_s = weight_s.to(device)
+        label_t = meta_t_stu['target_ori'].to(device)
+        weight_t = meta_t_stu['target_weight_ori'].to(device)
+
+        # Get segmentation maps and scores
+        seg_maps = get_segmentation_masks(seg_model, x_t_stu)
+        print(seg_maps.size)
+        seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
+        s_max = calculate_s_max(seg_maps)
+        print(s_max)
+        visibility_scores = [torch.sum(seg_maps[i]) / s_max for i in range(seg_maps.size(0))]
+        print(len(visibility_scores))
+        exit()
+
+        # measure data loading time
+        data_time.update(time.time() - end)
+
+        ratio = args.image_size / args.heatmap_size
+
+        with torch.no_grad():
+            if style_net is not None and args.s2t_freq > np.random.rand():
+                _a = np.random.uniform(*args.s2t_alpha)
+                x_s = style_net(x_s, x_t_teas_ori[0], _a)[2]
+                x_s = torch.maximum(torch.minimum(x_s.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2)
+
+            if style_net is not None and args.t2s_freq > np.random.rand():
+                _a = np.random.uniform(*args.t2s_alpha)
+                x_t_teas = [style_net(x_t_tea, x_s_ori, _a)[2] for x_t_tea in x_t_teas]
+                x_t_teas = [torch.maximum(torch.minimum(x_t_tea.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2) for x_t_tea in x_t_teas]
+
+            #PSEUDO LABELS
+            y_t_teas = [teacher(x_t_tea) for x_t_tea in x_t_teas] # softmax on w, h
+            #PSEUDO LABELS AFTER NORMALIZATION AND RECON
+            y_t_tea_recon = torch.zeros_like(y_t_teas[0]).cuda() # b, c, h, w
+            tea_mask = torch.zeros(y_t_teas[0].shape[:2]).cuda() # b, c
+            for ind in range(x_t_teas[0].size(0)):
+                recons = torch.zeros(args.k, *y_t_teas[0].size()[1:]) # k, c, h, w
+                for _k in range(args.k):
+                    angle, [trans_x, trans_y], [shear_x, shear_y], scale = meta_t_tea[_k]['aug_param_tea']
+                    _angle, _trans_x, _trans_y, _shear_x, _shear_y, _scale = angle[ind].item(), trans_x[ind].item(), trans_y[ind].item(), shear_x[ind].item(), shear_y[ind].item(), scale[ind].item() 
+                    temp = tF.affine(y_t_teas[_k][ind], 0., translate=[_trans_x/ratio, _trans_y/ratio], shear=[0., 0.], scale=1.)
+                    temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
+                    temp = tF.affine(temp, 0., translate=[0, 0], shear=[_shear_x, _shear_y], scale=1.) # c, h, w
+                    recons[_k] = temp # c, h, w
+
+                y_t_tea_recon[ind] = torch.mean(recons, dim=0) # (c, h, w)
+                tea_mask[ind] = 1.
+
+            angle, [trans_x, trans_y], [shear_x, shear_y], scale = meta_t_stu['aug_param_stu']
+            # adaptively occlude keypoints
+            if args.occlude_rate > -1: ###
+                b, k, h, w = y_t_tea_recon.size()
+                conf = y_t_tea_recon.amax(dim=(2,3))
+
+                pred_position = y_t_tea_recon.view(b, k, -1).argmax(-1)
+                pred_position = torch.stack([pred_position % w, pred_position // w], -1).cpu().numpy()
+
+                conf_table = conf >= args.occlude_thresh # b, c
+
+                for _b in range(b):
+                    if (conf_table[_b].sum() > 0 and np.random.rand() <= args.occlude_rate):
+                        _angle, _trans_x, _trans_y, _shear_x, _shear_y, _scale = angle[_b].item(), trans_x[_b].item(), trans_y[_b].item(), shear_x[_b].item(), shear_y[_b].item(), scale[_b].item() 
+                        temp = tF.affine(x_t_stu[_b], 0., translate=[_trans_x/ratio, _trans_y/ratio], shear=[0., 0.], scale=1.)
+                        temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
+                        temp = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
+
+                        # randomly select a point to occlude
+                        #candidates = torch.arange(0, k)[conf_table[_b]]
+                        candidates = torch.arange(0, k).to(conf_table.device)[conf_table[_b]]
+                        _c = np.random.choice(candidates.cpu().numpy())
+                        
+                        # calculate the occlusion border
+                        position = (pred_position[_b, _c] * ratio).astype(np.int32) 
+
+                        left = max(position[1] - args.occlude_size, 0)
+                        right = min(position[1] + args.occlude_size, args.image_size)
+                        upper = max(position[0] - args.occlude_size, 0)
+                        bottom = min(position[0] + args.occlude_size, args.image_size)
+                        
+                        # paste with random patch
+                        left_src = np.random.randint(args.image_size - (right - left) + 1)
+                        right_src = left_src + right - left
+                        upper_src = np.random.randint(args.image_size - (bottom - upper) + 1)
+                        bottom_src = upper_src + bottom - upper
+                        temp[:, left:right, upper:bottom] = temp[:, left_src:right_src, upper_src:bottom_src]
+
+                        # warp it back
+                        x_t_stu[_b] = tF.affine(temp, -_angle, translate=[-_trans_x/ratio, -_trans_y/ratio], shear=[-_shear_x, -_shear_y], scale=1./_scale)
+                    
+        with torch.cuda.amp.autocast():
+            y_s = student(x_s) ###################
+            y_t_stu = student(x_t_stu) # softmax on w, h
+            ori_stu = datasets.util.get_orientations(y_t_stu)
+
+            y_t_stu_recon = torch.zeros_like(y_t_stu).cuda() # b, c, h, w
+            for ind in range(x_t_stu.size(0)):
+                _angle, _trans_x, _trans_y, _shear_x, _shear_y, _scale = angle[ind].item(), trans_x[ind].item(), trans_y[ind].item(), shear_x[ind].item(), shear_y[ind].item(), scale[ind].item() 
+                temp = tF.affine(y_t_stu[ind], 0., translate=[_trans_x/ratio, _trans_y/ratio], shear=[0., 0.], scale=1.)
+                temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
+                y_t_stu_recon[ind] = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
+
+            loss_s = criterion(y_s, label_s, weight_s)
+
+            activates = y_t_tea_recon.amax(dim=(2,3))
+            y_t_tea_recon = rectify(y_t_tea_recon, sigma=args.sigma)
+            mask_thresh = torch.kthvalue(activates.view(-1), int(args.mask_ratio * activates.numel()))[0].item()
+            tea_mask = tea_mask * activates>mask_thresh
+
+            prior_score_stu = prior(ori_stu)
+            loss_p = prior_score_stu.mean()
+            
+            loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
+            weighted_loss_c = cl_criterion(y_t_stu_recon, y_t_tea_recon, visibility_scores, tea_mask=tea_mask)
+
+        #loss_all = loss_s + args.lambda_c * loss_c
+        loss_all = lambda_c * weighted_loss_c + (1 - lambda_c) * loss_c + loss_s + args.lambda_p * loss_p
+
+        scaler.scale(loss_all).backward()
+        scaler.step(stu_optimizer)
+        tea_optimizer.step()
+
+        scaler.update()
+
+        # measure accuracy and record loss
+        _, avg_acc_s, cnt_s, pred_s = accuracy(y_s.detach().cpu().numpy(),
+                                               label_s.detach().cpu().numpy())
+        acc_s.update(avg_acc_s, cnt_s)
+        losses_all.update(loss_all, x_s.size(0))
+        losses_s.update(loss_s, x_s.size(0))
+        losses_c.update(loss_c, x_s.size(0))
+        w_losses_c.update(weighted_loss_c, x_s.size(0))
+        losses_p.update(loss_p, x_s.size(0))
+        # measure elapsed time
+        batch_time.update(time.time() - end)
+        end = time.time()
+
+        if i % args.print_freq == 0:
+            progress.display(i)
+            if visualize is not None:
+                visualize(x_s[0], seg_maps[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), "target_{}_mask.jpg".format(i))
+                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
+
+
+def validate(val_loader, model, criterion, visualize, args: argparse.Namespace):
+    batch_time = AverageMeter('Time', ':6.3f')
+    losses = AverageMeter('Loss', ':.2e')
+    acc = AverageMeterList(list(range(val_loader.dataset.num_keypoints)), ":3.2f",  ignore_val=-1)
+    progress = ProgressMeter(
+        len(val_loader),
+        [batch_time, losses], 
+        prefix='Test: ')
+
+    # switch to evaluate mode
+    model.eval()
+
+    with torch.no_grad():
+        end = time.time()
+        for i, (x, label, weight, meta) in enumerate(val_loader): #image, target, target_weight, meta, K
+            x = x.to(device)
+            label = label.to(device)
+            weight = weight.to(device)
+
+            # compute output
+            y = model(x)
+            loss = criterion(y, label, weight)
+
+            # measure accuracy and record loss
+            losses.update(loss.item(), x.size(0))
+            acc_per_points, avg_acc, cnt, pred = accuracy(y.cpu().numpy(),
+                                                          label.cpu().numpy())
+            acc.update(acc_per_points, x.size(0))
+
+            # measure elapsed time
+            batch_time.update(time.time() - end)
+            end = time.time()
+
+            if i % args.val_print_freq == 0:
+                progress.display(i)
+                if visualize is not None:
+                    visualize(x[0], None, pred[0] * args.image_size / args.heatmap_size, "val_{}_pred.jpg".format(i), None)
+                    visualize(x[0], None, meta['keypoint2d'][0], "val_{}_label.jpg".format(i), None)
+
+    return val_loader.dataset.group_accuracy(acc.average())
+
 def main(args: argparse.Namespace):
     logger = CompleteLogger(args.log + '_' + args.arch, args.phase)
 
@@ -239,12 +518,12 @@ def main(args: argparse.Namespace):
         if epoch < args.pretrain_epoch:
             pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
         else:
-            if epoch == args.pretrain_epoch:
-                pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
-                model_dict = student.state_dict()
-                pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-                student.load_state_dict(pretrained_dict, strict=False)
-                teacher.load_state_dict(pretrained_dict, strict=False)
+            # if epoch == args.pretrain_epoch:
+            #     pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
+            #     model_dict = student.state_dict()
+            #     pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+            #     student.load_state_dict(pretrained_dict, strict=False)
+            #     teacher.load_state_dict(pretrained_dict, strict=False)
 
             train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, prior, criterion, con_criterion, cl_criterion,
                     stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
@@ -278,282 +557,6 @@ def main(args: argparse.Namespace):
     plot_lambda_vs_epochs(lambda_c_values, epochs, logger.get_image_path(f"lambda_vs_epochs.png"))
     logger.close()
 
-def pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch: int, visualize, args: argparse.Namespace):
-    batch_time = AverageMeter('Time', ':4.2f')
-    data_time = AverageMeter('Data', ':3.1f')
-    losses_all = AverageMeter('Loss (all)', ":.4e")
-    losses_s = AverageMeter('Loss (s)', ":.4e")
-    acc_s = AverageMeter("Acc (s)", ":3.2f")
-
-    progress = ProgressMeter(
-        args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_s, acc_s],
-        prefix="Epoch: [{}]".format(epoch))
-
-    # switch to train mode
-    student.train()
-
-    end = time.time()
-    scaler = torch.cuda.amp.GradScaler()
-
-    for i in range(args.iters_per_epoch):
-        stu_optimizer.zero_grad()
-
-        x_s, label_s, weight_s, meta_s = next(train_source_iter)
-        x_s = x_s.to(device)
-        label_s = label_s.to(device)
-        weight_s = weight_s.to(device)
-
-        if style_net is not None and args.s2t_freq > np.random.rand():
-            with torch.no_grad():
-                _, _, _, _ , x_ts, _, _ , _= next(train_target_iter)
-                x_t = x_ts[0].to(device)
-                _a = np.random.uniform(*args.s2t_alpha)
-                x_s = style_net(x_s, x_t, _a)[2]
-                x_s = torch.maximum(torch.minimum(x_s.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2)
-        # measure data loading time
-        data_time.update(time.time() - end)
-
-        with torch.cuda.amp.autocast():
-            y_s = student(x_s)
-            loss_s = criterion(y_s, label_s, weight_s)
-
-        loss_all = loss_s 
-        scaler.scale(loss_all).backward()
-        scaler.step(stu_optimizer)
-        scaler.update()
-
-        _, avg_acc_s, cnt_s, pred_s = accuracy(y_s.detach().cpu().numpy(),
-                                               label_s.detach().cpu().numpy())
-        acc_s.update(avg_acc_s, cnt_s)
-        losses_all.update(loss_all, x_s.size(0))
-        losses_s.update(loss_s, x_s.size(0))
-
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if i % args.print_freq == 0:
-            progress.display(i)
-            if visualize is not None:
-                visualize(x_s[0], None, pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), None)
-                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
-
-def train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, prior, criterion, con_criterion, cl_criterion,
-          stu_optimizer, tea_optimizer, lambda_c, epoch: int, visualize, args: argparse.Namespace):
-    batch_time = AverageMeter('Time', ':4.2f')
-    data_time = AverageMeter('Data', ':3.1f')
-    losses_all = AverageMeter('Loss (all)', ":.4e")
-    losses_s = AverageMeter('Loss (s)', ":.4e")
-    losses_c = AverageMeter('Loss (c)', ":.4e")
-    w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
-    losses_p = AverageMeter('Prior Loss (p)', ":.4e")
-    acc_s = AverageMeter("Acc (s)", ":3.2f")
-
-    progress = ProgressMeter(
-        args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_c, w_losses_c, losses_p, acc_s],
-        prefix="Epoch: [{}]".format(epoch))
-
-    # switch to train mode
-    student.train()
-    teacher.train()
-
-    end = time.time()
-    scaler = torch.cuda.amp.GradScaler()
-
-    for i in range(args.iters_per_epoch):
-        stu_optimizer.zero_grad()
-
-        x_s, label_s, weight_s, meta_s = next(train_source_iter)
-        x_t_stu, _, _, meta_t_stu, x_t_teas, _, _, meta_t_tea = next(train_target_iter)
-
-        x_s = x_s.to(device)
-        x_s_ori = x_s.clone()
-        x_t_stu = x_t_stu.to(device)
-        x_t_teas = [x_t_tea.to(device) for x_t_tea in x_t_teas]
-        x_t_teas_ori = [x_t_tea.clone() for x_t_tea in x_t_teas]
-        label_s = label_s.to(device)
-        weight_s = weight_s.to(device)
-        label_t = meta_t_stu['target_ori'].to(device)
-        weight_t = meta_t_stu['target_weight_ori'].to(device)
-
-        # Get segmentation maps and scores
-        seg_maps = get_segmentation_masks(seg_model, x_t_stu)
-        seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
-        s_max = calculate_s_max(seg_maps)
-        visibility_scores = [torch.sum(seg_maps[i]) / s_max for i in range(seg_maps.size(0))]
-
-        # measure data loading time
-        data_time.update(time.time() - end)
-
-        ratio = args.image_size / args.heatmap_size
-
-        with torch.no_grad():
-            if style_net is not None and args.s2t_freq > np.random.rand():
-                _a = np.random.uniform(*args.s2t_alpha)
-                x_s = style_net(x_s, x_t_teas_ori[0], _a)[2]
-                x_s = torch.maximum(torch.minimum(x_s.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2)
-
-            if style_net is not None and args.t2s_freq > np.random.rand():
-                _a = np.random.uniform(*args.t2s_alpha)
-                x_t_teas = [style_net(x_t_tea, x_s_ori, _a)[2] for x_t_tea in x_t_teas]
-                x_t_teas = [torch.maximum(torch.minimum(x_t_tea.permute(0,2,3,1), recover_max), recover_min).permute(0,3,1,2) for x_t_tea in x_t_teas]
-
-            #PSEUDO LABELS
-            y_t_teas = [teacher(x_t_tea) for x_t_tea in x_t_teas] # softmax on w, h
-            #PSEUDO LABELS AFTER NORMALIZATION AND RECON
-            y_t_tea_recon = torch.zeros_like(y_t_teas[0]).cuda() # b, c, h, w
-            tea_mask = torch.zeros(y_t_teas[0].shape[:2]).cuda() # b, c
-            for ind in range(x_t_teas[0].size(0)):
-                recons = torch.zeros(args.k, *y_t_teas[0].size()[1:]) # k, c, h, w
-                for _k in range(args.k):
-                    angle, [trans_x, trans_y], [shear_x, shear_y], scale = meta_t_tea[_k]['aug_param_tea']
-                    _angle, _trans_x, _trans_y, _shear_x, _shear_y, _scale = angle[ind].item(), trans_x[ind].item(), trans_y[ind].item(), shear_x[ind].item(), shear_y[ind].item(), scale[ind].item() 
-                    temp = tF.affine(y_t_teas[_k][ind], 0., translate=[_trans_x/ratio, _trans_y/ratio], shear=[0., 0.], scale=1.)
-                    temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
-                    temp = tF.affine(temp, 0., translate=[0, 0], shear=[_shear_x, _shear_y], scale=1.) # c, h, w
-                    recons[_k] = temp # c, h, w
-
-                y_t_tea_recon[ind] = torch.mean(recons, dim=0) # (c, h, w)
-                tea_mask[ind] = 1.
-
-            angle, [trans_x, trans_y], [shear_x, shear_y], scale = meta_t_stu['aug_param_stu']
-            # adaptively occlude keypoints
-            if args.occlude_rate > -1: ###
-                b, k, h, w = y_t_tea_recon.size()
-                conf = y_t_tea_recon.amax(dim=(2,3))
-
-                pred_position = y_t_tea_recon.view(b, k, -1).argmax(-1)
-                pred_position = torch.stack([pred_position % w, pred_position // w], -1).cpu().numpy()
-
-                conf_table = conf >= args.occlude_thresh # b, c
-
-                for _b in range(b):
-                    if (conf_table[_b].sum() > 0 and np.random.rand() <= args.occlude_rate):
-                        _angle, _trans_x, _trans_y, _shear_x, _shear_y, _scale = angle[_b].item(), trans_x[_b].item(), trans_y[_b].item(), shear_x[_b].item(), shear_y[_b].item(), scale[_b].item() 
-                        temp = tF.affine(x_t_stu[_b], 0., translate=[_trans_x/ratio, _trans_y/ratio], shear=[0., 0.], scale=1.)
-                        temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
-                        temp = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
-
-                        # randomly select a point to occlude
-                        #candidates = torch.arange(0, k)[conf_table[_b]]
-                        candidates = torch.arange(0, k).to(conf_table.device)[conf_table[_b]]
-                        _c = np.random.choice(candidates.cpu().numpy())
-                        
-                        # calculate the occlusion border
-                        position = (pred_position[_b, _c] * ratio).astype(np.int32) 
-
-                        left = max(position[1] - args.occlude_size, 0)
-                        right = min(position[1] + args.occlude_size, args.image_size)
-                        upper = max(position[0] - args.occlude_size, 0)
-                        bottom = min(position[0] + args.occlude_size, args.image_size)
-                        
-                        # paste with random patch
-                        left_src = np.random.randint(args.image_size - (right - left) + 1)
-                        right_src = left_src + right - left
-                        upper_src = np.random.randint(args.image_size - (bottom - upper) + 1)
-                        bottom_src = upper_src + bottom - upper
-                        temp[:, left:right, upper:bottom] = temp[:, left_src:right_src, upper_src:bottom_src]
-
-                        # warp it back
-                        x_t_stu[_b] = tF.affine(temp, -_angle, translate=[-_trans_x/ratio, -_trans_y/ratio], shear=[-_shear_x, -_shear_y], scale=1./_scale)
-                    
-        with torch.cuda.amp.autocast():
-            y_s = student(x_s) ###################
-            y_t_stu = student(x_t_stu) # softmax on w, h
-            ori_stu = datasets.util.get_orientations(y_t_stu)
-
-            y_t_stu_recon = torch.zeros_like(y_t_stu).cuda() # b, c, h, w
-            for ind in range(x_t_stu.size(0)):
-                _angle, _trans_x, _trans_y, _shear_x, _shear_y, _scale = angle[ind].item(), trans_x[ind].item(), trans_y[ind].item(), shear_x[ind].item(), shear_y[ind].item(), scale[ind].item() 
-                temp = tF.affine(y_t_stu[ind], 0., translate=[_trans_x/ratio, _trans_y/ratio], shear=[0., 0.], scale=1.)
-                temp = tF.affine(temp, _angle, translate=[0., 0.], shear=[0., 0.], scale=_scale)
-                y_t_stu_recon[ind] = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
-
-            loss_s = criterion(y_s, label_s, weight_s)
-
-            activates = y_t_tea_recon.amax(dim=(2,3))
-            y_t_tea_recon = rectify(y_t_tea_recon, sigma=args.sigma)
-            mask_thresh = torch.kthvalue(activates.view(-1), int(args.mask_ratio * activates.numel()))[0].item()
-            tea_mask = tea_mask * activates>mask_thresh
-
-            prior_score_stu = prior(ori_stu)
-            loss_p = prior_score_stu.mean()
-            
-            loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
-            weighted_loss_c = cl_criterion(y_t_stu_recon, y_t_tea_recon, visibility_scores, tea_mask=tea_mask)
-
-        #loss_all = loss_s + args.lambda_c * loss_c
-        loss_all = lambda_c * weighted_loss_c + (1 - lambda_c) * loss_c + loss_s + args.lambda_p * loss_p
-
-        scaler.scale(loss_all).backward()
-        scaler.step(stu_optimizer)
-        tea_optimizer.step()
-
-        scaler.update()
-
-        # measure accuracy and record loss
-        _, avg_acc_s, cnt_s, pred_s = accuracy(y_s.detach().cpu().numpy(),
-                                               label_s.detach().cpu().numpy())
-        acc_s.update(avg_acc_s, cnt_s)
-        losses_all.update(loss_all, x_s.size(0))
-        losses_s.update(loss_s, x_s.size(0))
-        losses_c.update(loss_c, x_s.size(0))
-        w_losses_c.update(weighted_loss_c, x_s.size(0))
-        losses_p.update(loss_p, x_s.size(0))
-        # measure elapsed time
-        batch_time.update(time.time() - end)
-        end = time.time()
-
-        if i % args.print_freq == 0:
-            progress.display(i)
-            if visualize is not None:
-                visualize(x_s[0], seg_maps[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), "target_{}_mask.jpg".format(i))
-                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
-
-
-def validate(val_loader, model, criterion, visualize, args: argparse.Namespace):
-    batch_time = AverageMeter('Time', ':6.3f')
-    losses = AverageMeter('Loss', ':.2e')
-    acc = AverageMeterList(list(range(val_loader.dataset.num_keypoints)), ":3.2f",  ignore_val=-1)
-    progress = ProgressMeter(
-        len(val_loader),
-        [batch_time, losses], 
-        prefix='Test: ')
-
-    # switch to evaluate mode
-    model.eval()
-
-    with torch.no_grad():
-        end = time.time()
-        for i, (x, label, weight, meta) in enumerate(val_loader): #image, target, target_weight, meta, K
-            x = x.to(device)
-            label = label.to(device)
-            weight = weight.to(device)
-
-            # compute output
-            y = model(x)
-            loss = criterion(y, label, weight)
-
-            # measure accuracy and record loss
-            losses.update(loss.item(), x.size(0))
-            acc_per_points, avg_acc, cnt, pred = accuracy(y.cpu().numpy(),
-                                                          label.cpu().numpy())
-            acc.update(acc_per_points, x.size(0))
-
-            # measure elapsed time
-            batch_time.update(time.time() - end)
-            end = time.time()
-
-            if i % args.val_print_freq == 0:
-                progress.display(i)
-                if visualize is not None:
-                    visualize(x[0], None, pred[0] * args.image_size / args.heatmap_size, "val_{}_pred.jpg".format(i), None)
-                    visualize(x[0], None, meta['keypoint2d'][0], "val_{}_label.jpg".format(i), None)
-
-    return val_loader.dataset.group_accuracy(acc.average())
-
-     
 if __name__ == '__main__':
     architecture_names = sorted(
         name for name in models.__dict__
