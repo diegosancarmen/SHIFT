@@ -5,6 +5,7 @@ import numpy as np
 import os
 import re
 import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from torch.optim import Optimizer
 import matplotlib
@@ -28,6 +29,34 @@ class OldWeightEMA (object):
         for p, src_p in zip(self.target_params, self.source_params):
             p.data.mul_(self.alpha)
             p.data.add_(src_p.data * one_minus_alpha)
+
+
+# Define the encoder to map keypoints to a segmentation map
+class KeypointToSegmentationEncoder(nn.Module):
+    def __init__(self, num_keypoints=16, output_size=256):
+        super(KeypointToSegmentationEncoder, self).__init__()
+        self.fc1 = nn.Linear(num_keypoints * 2, 512)
+        self.fc2 = nn.Linear(512, 1024)
+        self.fc3 = nn.Linear(1024, output_size * output_size)
+        self.output_size = output_size
+    
+    def forward(self, keypoints):
+        """
+        Forward pass to map keypoints to a segmentation map.
+
+        Args:
+            keypoints (torch.Tensor): Keypoint coordinates (B, num_keypoints, 2)
+        
+        Returns:
+            torch.Tensor: Segmentation map (B, 1, output_size, output_size)
+        """
+        B, num_keypoints, _ = keypoints.shape
+        x = keypoints.view(B, -1)  # Flatten keypoints
+        x = torch.relu(self.fc1(x))
+        x = torch.relu(self.fc2(x))
+        x = torch.sigmoid(self.fc3(x))
+        x = x.view(B, self.output_size, self.output_size)  # Reshape to segmentation map
+        return x
 
 def sigmoid_rampup(current, rampup_length):
     """Exponential rampup from https://arxiv.org/abs/1610.02242"""
@@ -148,6 +177,57 @@ def generate_prior_map(prior, preds, gamma=2, sigma=2, epsilon=-10e10, v3=False)
 
     return targets
 
+def heatmap_to_keypoints(heatmaps):
+    """
+    Convert heatmaps to keypoint coordinates.
+
+    Args:
+        heatmaps (torch.Tensor): Heatmaps from the student model (B, num_keypoints, H, W)
+    
+    Returns:
+        torch.Tensor: Keypoint coordinates (B, num_keypoints, 2)
+    """
+    B, num_keypoints, H, W = heatmaps.shape
+    heatmaps_reshaped = heatmaps.view(B, num_keypoints, -1)
+    max_indices = torch.argmax(heatmaps_reshaped, dim=2)
+    keypoints_y = (max_indices // W).float()
+    keypoints_x = (max_indices % W).float()
+    keypoints = torch.stack((keypoints_x, keypoints_y), dim=2)
+    return keypoints
+
+def project_keypoints_onto_segmentation_map(keypoints, segmentation_map):
+    """
+    Project keypoints onto the segmentation map and calculate normalized occlusion scores.
+    
+    Args:
+        keypoints (torch.Tensor): Predicted keypoints from the student model (B, num_keypoints, 2)
+        segmentation_map (torch.Tensor): Segmentation map (B, H, W)
+    
+    Returns:
+        torch.Tensor: Normalized occlusion scores for each keypoint (B, num_keypoints)
+    """
+    B, num_keypoints, _ = keypoints.shape # B, num_keypoints, 2
+    occlusion_scores = torch.zeros(B, num_keypoints, device=keypoints.device)
+    
+    for i in range(B):
+        for j in range(num_keypoints):
+            x, y = keypoints[i, j]
+            x = int(x)
+            y = int(y)
+            
+            if x >= 0 and x < segmentation_map.shape[2] and y >= 0 and y < segmentation_map.shape[1]:
+                
+                occlusion_scores[i, j] = segmentation_map[i, y, x]
+    
+    # Normalize occlusion scores to be between 0 and 1
+    min_scores = occlusion_scores.min(dim=1, keepdim=True)[0]
+    max_scores = occlusion_scores.max(dim=1, keepdim=True)[0]
+    normalized_occlusion_scores = (occlusion_scores - min_scores) / (max_scores - min_scores + 1e-10)  # Adding small value to avoid division by zero
+    
+    # Compute visibility scores as 1 - normalized occlusion scores
+    visibility_scores = 1 - normalized_occlusion_scores
+    
+    return visibility_scores
 
 def calculate_s_max(segmentation_maps):
     batch_size = segmentation_maps.size(0)

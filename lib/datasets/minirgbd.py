@@ -12,7 +12,7 @@ from ..transforms.keypoint_detection import Compose, ResizePad
 from .util import generate_target
 
 class MiniRGBD(Body16KeypointDataset):
-    """miniRGBD dataset for Mean Teacher framework
+    """MiniRGBD dataset for Mean Teacher framework
 
     Args:
         root (str): Root directory of dataset
@@ -24,6 +24,32 @@ class MiniRGBD(Body16KeypointDataset):
         heatmap_size (tuple): (width, height) of the heatmap. Default: (64, 64)
         sigma (int): sigma parameter when generate the heatmap. Default: 2
         vis (bool): If true, visualize the keypoints.
+        # MINIRGBD Joints List
+        # global
+        # leftThigh
+        # rightThigh
+        # spine
+        # leftCalf
+        # rightCalf
+        # spine1
+        # leftFoot
+        # rightFoot
+        # spine2
+        # leftToes
+        # rightToes
+        # neck
+        # leftShoulder
+        # rightShoulder
+        # head
+        # leftUpperArm
+        # rightUpperArm
+        # leftForeArm
+        # rightForeArm
+        # leftHand
+        # rightHand
+        # leftFingers
+        # rightFingers
+        # noseVertex
     """
     def __init__(self, root, split='train', transforms=None, image_size=(256, 256), **kwargs):
         self.split = split
@@ -33,14 +59,10 @@ class MiniRGBD(Body16KeypointDataset):
             ToTensor(),
             normalize
         ])
-        # self.transforms_base = Compose([ResizePad(image_size[0])]) + transforms_base
-        # self.transforms_stu = transforms_stu
-        # self.transforms_tea = transforms_tea
-        # self.vis = vis
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/sarosij/MINI-RGBD.npy', allow_pickle=True).item()
+        data = np.load('/data/AmitRoyChowdhury/sarosij/MiniRGBD/MiniRGBD.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             img_name = item.split('_')[1] + '_' + item.split('_')[-1].replace('.txt', '.png')
@@ -48,7 +70,8 @@ class MiniRGBD(Body16KeypointDataset):
             self.samples.append((img_path, data[item]['pose_2d']))
         #self.images, self.db_2d, self.db_3d, self.frame_names = self.read_data() #image, pose_2d, pose_3d, frame_name
         
-        self.joints_index = (7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21) #(2,5,11,1,4,10,3,9,12,15,13,18,20,14,19,21)
+        #(2, 5, 11, 1, 4, 10, 3, 9, 12, 15, 13, 18, 20, 14, 19, 21)
+        self.joints_index = (7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21)
         self.visible = np.ones(16, dtype=np.float32)
 
         super(MiniRGBD, self).__init__(root, samples=self.samples, transforms=transforms, image_size=image_size, **kwargs)

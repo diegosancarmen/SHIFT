@@ -17,7 +17,7 @@ from torchvision.transforms import Compose, ToPILImage
 import torch.nn.functional as F
 import torchvision.transforms.functional as tF
 import lib.models as models
-from lib.models.loss import JointsMSELoss, ConsLoss, CurriculumLearningLoss
+from lib.models.loss import *
 import lib.datasets as datasets
 import lib.transforms.keypoint_detection as T
 from lib.transforms import Denormalize
@@ -99,20 +99,21 @@ def pretrain(train_source_iter, train_target_iter, student, style_net, criterion
                 visualize(x_s[0], None, pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), None)
                 visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
 
-def train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, prior, criterion, con_criterion, cl_criterion,
-          stu_optimizer, tea_optimizer, lambda_c, epoch: int, visualize, args: argparse.Namespace):
+def train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
+          out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch: int, visualize, args: argparse.Namespace):
     batch_time = AverageMeter('Time', ':4.2f')
     data_time = AverageMeter('Data', ':3.1f')
     losses_all = AverageMeter('Loss (all)', ":.4e")
     losses_s = AverageMeter('Loss (s)', ":.4e")
     losses_c = AverageMeter('Loss (c)', ":.4e")
     w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
+    losses_seg = AverageMeter('Seg_Loss (seg)', ":.4e")
     losses_p = AverageMeter('Prior Loss (p)', ":.4e")
     acc_s = AverageMeter("Acc (s)", ":3.2f")
 
     progress = ProgressMeter(
         args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_c, w_losses_c, losses_p, acc_s],
+        [batch_time, data_time, losses_all, losses_c, w_losses_c, losses_seg, losses_p, acc_s],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -138,15 +139,13 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         label_t = meta_t_stu['target_ori'].to(device)
         weight_t = meta_t_stu['target_weight_ori'].to(device)
 
-        # Get segmentation maps and scores
-        seg_maps = get_segmentation_masks(seg_model, x_t_stu)
-        print(seg_maps.size)
-        seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
-        s_max = calculate_s_max(seg_maps)
-        print(s_max)
-        visibility_scores = [torch.sum(seg_maps[i]) / s_max for i in range(seg_maps.size(0))]
-        print(len(visibility_scores))
-        exit()
+        if args.mode in ['all', 'visibility']:
+            # Get segmentation maps and scores
+            seg_maps = get_segmentation_masks(seg_model, x_t_stu) #seg_maps: B, 21, H, W
+            seg_maps = torch.argmax(seg_maps, dim=1) # B, H, W
+            seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
+            #s_max = calculate_s_max(seg_maps)
+            #visibility_scores = [torch.sum(seg_maps[i]) / s_max for i in range(seg_maps.size(0))]
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -226,7 +225,6 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         with torch.cuda.amp.autocast():
             y_s = student(x_s) ###################
             y_t_stu = student(x_t_stu) # softmax on w, h
-            ori_stu = datasets.util.get_orientations(y_t_stu)
 
             y_t_stu_recon = torch.zeros_like(y_t_stu).cuda() # b, c, h, w
             for ind in range(x_t_stu.size(0)):
@@ -240,16 +238,30 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
             activates = y_t_tea_recon.amax(dim=(2,3))
             y_t_tea_recon = rectify(y_t_tea_recon, sigma=args.sigma)
             mask_thresh = torch.kthvalue(activates.view(-1), int(args.mask_ratio * activates.numel()))[0].item()
-            tea_mask = tea_mask * activates>mask_thresh
+            tea_mask = tea_mask * activates>mask_thresh #B, num_keypoints
 
-            prior_score_stu = prior(ori_stu)
-            loss_p = prior_score_stu.mean()
+            if args.mode in ['all', 'visibility']:
+                y_t_stu_kp = heatmap_to_keypoints(y_t_stu_recon)
+                y_t_stu_segmap = kp2seg_model(y_t_stu_kp)
+                loss_seg = out_criterion(y_t_stu_segmap, seg_maps)
+                #visibility_scores = project_keypoints_onto_segmentation_map(y_t_stu_kp, seg_maps)
+                #weighted_loss_c = cl_criterion(y_t_stu_recon, y_t_tea_recon, visibility_scores, tea_mask=tea_mask)
+
+            if args.mode in ['all', 'prior']:
+                ori_stu = datasets.util.get_orientations(y_t_stu)
+                prior_score_stu = prior(ori_stu)
+                loss_p = prior_score_stu.mean()
             
             loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
-            weighted_loss_c = cl_criterion(y_t_stu_recon, y_t_tea_recon, visibility_scores, tea_mask=tea_mask)
 
-        #loss_all = loss_s + args.lambda_c * loss_c
-        loss_all = lambda_c * weighted_loss_c + (1 - lambda_c) * loss_c + loss_s + args.lambda_p * loss_p
+        if args.mode == 'all':
+            loss_all = lambda_c * loss_seg + (1 - lambda_c) * loss_c + loss_s + args.lambda_p * loss_p
+        elif args.mode == 'visibility':
+            loss_all = lambda_c * loss_seg + (1 - lambda_c) * loss_c + loss_s
+        elif args.mode == 'prior':
+            loss_all = loss_s + args.lambda_c * loss_c + args.lambda_p * loss_p
+        else:
+            loss_all = loss_s + args.lambda_c * loss_c
 
         scaler.scale(loss_all).backward()
         scaler.step(stu_optimizer)
@@ -264,8 +276,9 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         losses_all.update(loss_all, x_s.size(0))
         losses_s.update(loss_s, x_s.size(0))
         losses_c.update(loss_c, x_s.size(0))
-        w_losses_c.update(weighted_loss_c, x_s.size(0))
-        losses_p.update(loss_p, x_s.size(0))
+        #w_losses_c.update(weighted_loss_c if args.mode == 'visibility' else 0, x_s.size(0))
+        losses_seg.update(loss_seg if args.mode in ['all', 'visibility'] else 0, x_s.size(0))
+        losses_p.update(loss_p if args.mode in ['all', 'prior'] else 0, x_s.size(0))
         # measure elapsed time
         batch_time.update(time.time() - end)
         end = time.time()
@@ -273,8 +286,12 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         if i % args.print_freq == 0:
             progress.display(i)
             if visualize is not None:
-                visualize(x_s[0], seg_maps[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), "target_{}_mask.jpg".format(i))
-                visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
+                if args.mode in ['all', 'visibility']:
+                    visualize(x_s[0], seg_maps[0], pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), "target_{}_mask.jpg".format(i))
+                    visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
+                else:
+                    visualize(x_s[0], None, pred_s[0] * args.image_size / args.heatmap_size, "source_{}_pred.jpg".format(i), None)
+                    visualize(x_s[0], None, meta_s['keypoint2d'][0], "source_{}_label.jpg".format(i), None)
 
 
 def validate(val_loader, model, criterion, visualize, args: argparse.Namespace):
@@ -383,18 +400,11 @@ def main(args: argparse.Namespace):
     train_target_dataset = target_dataset(root=args.target_root, transforms_base=base_transform,
                                           transforms_stu=tgt_train_transform_stu, transforms_tea=tgt_train_transform_tea, 
                                           image_size=image_size, heatmap_size=heatmap_size)
-    # train_target_dataset = target_dataset(root=args.target_root, heatmap_size=heatmap_size, transforms_base=base_transform,
-    #                                     transforms_stu=tgt_train_transform_stu, transforms_tea=tgt_train_transform_tea, 
-    #                                     subset='train', gt2d=False, read_confidence=False, sample_interval=None, flip=False,
-    #                                     cond_3d_prob=0, rot=False, num_joint=16)
     train_target_loader = DataLoader(train_target_dataset, batch_size=args.batch_size,
                                      shuffle=True, num_workers=args.workers, pin_memory=True, drop_last=True)
     target_dataset = datasets.__dict__[args.target]
     val_target_dataset = target_dataset(root=args.target_root, split='validate', transforms=val_transform,
                                         image_size=image_size, heatmap_size=heatmap_size)
-    # val_target_dataset = target_dataset(root=args.target_root, heatmap_size=heatmap_size, transforms=val_transform, 
-    #                                     subset='validate', gt2d=False, read_confidence=False, sample_interval=None, flip=False,
-    #                                     cond_3d_prob=0, rot=False, num_joint=16)
     val_target_loader = DataLoader(val_target_dataset, batch_size=args.test_batch, shuffle=False, pin_memory=True)
 
     logger.write("Source train: {}".format(len(train_source_loader)))
@@ -424,9 +434,17 @@ def main(args: argparse.Namespace):
     else:
         style_net = None
 
+    criterions = {
+    "mse": JointsMSELoss(),
+    "cons": ConsLoss(),
+    "curriculum": CurriculumLearningLoss(),
+    "seg": SegLoss(),
+    }
+
     criterion = JointsMSELoss()
     con_criterion = ConsLoss()
     cl_criterion = CurriculumLearningLoss()
+    out_criterion = SegLoss()
 
     if args.SGD:
         stu_optimizer = SGD(student.parameters(), lr=args.lr, momentum=0.9, weight_decay=0.0001, nesterov=True)
@@ -442,8 +460,9 @@ def main(args: argparse.Namespace):
     if style_net is not None:
         style_net = torch.nn.DataParallel(style_net).cuda()
 
-    #Initialize segmentation model.
-    seg_model = SegNet(num_classes=21, pretrained=True).to(device)
+    if args.mode in ['all', 'visibility']:
+        seg_model = SegNet(num_classes=21, pretrained=True).to(device)
+        kp2seg_model = KeypointToSegmentationEncoder(num_keypoints=16, output_size=256).to(device)
 
     prior_dict = torch.load(args.prior, map_location='cpu')['model']
     prior.load_state_dict(prior_dict)  
@@ -525,8 +544,8 @@ def main(args: argparse.Namespace):
             #     student.load_state_dict(pretrained_dict, strict=False)
             #     teacher.load_state_dict(pretrained_dict, strict=False)
 
-            train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, prior, criterion, con_criterion, cl_criterion,
-                    stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
+            train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
+                    out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
             lambda_c_values.append(lambda_c.item())
             epochs.append(epoch+1)
 
@@ -645,6 +664,8 @@ if __name__ == '__main__':
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--lambda_c', default=1., type=float)
     parser.add_argument('--lambda_p', default=1e-5, type=float)
+    parser.add_argument("--mode", type=str, default='all', choices=['uda', 'visibility', 'prior', 'all'],
+                        help="uda = only uda, visibility = only visibility, prior = only prior")
     parser.add_argument('--step_p', default=30, type=int)
     parser.add_argument('--temp_cl', default=10., type=float)
     parser.add_argument('--seg_threshold', default=0.5, type=float)

@@ -9,7 +9,7 @@ from ..transforms.keypoint_detection import Compose, ResizePad
 from .util import generate_target
 
 class MiniRGBD_mt(Body16KeypointDataset):
-    """miniRGBD dataset for Mean Teacher framework
+    """MiniRGBD dataset for Mean Teacher framework
 
     Args:
         root (str): Root directory of dataset
@@ -61,7 +61,7 @@ class MiniRGBD_mt(Body16KeypointDataset):
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/sarosij/MINI-RGBD.npy', allow_pickle=True).item()
+        data = np.load('/data/AmitRoyChowdhury/sarosij/MiniRGBD/MiniRGBD.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             img_name = item.split('_')[1] + '_' + item.split('_')[-1].replace('.txt', '.png')
@@ -87,6 +87,7 @@ class MiniRGBD_mt(Body16KeypointDataset):
 
         visible = np.array([1.] * 16, dtype=np.float32)
         visible = visible[:, np.newaxis]
+
         # 2D heatmap
         target_stu, target_weight_stu = generate_target(keypoint2d_stu, visible, self.heatmap_size, self.sigma, self.image_size)
         target_stu = torch.from_numpy(target_stu)

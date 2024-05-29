@@ -132,34 +132,70 @@ class ConsLoss(nn.Module):
         return loss_map.mean()
     
 class CurriculumLearningLoss(nn.Module):
+
     def __init__(self):
         super(CurriculumLearningLoss, self).__init__()
 
-    def forward(self, stu_out, tea_out, visibility_scores, valid_mask=None, tea_mask=None):
+    def forward(self, stu_out, tea_out, visibility_scores, valid_mask=None, tea_mask=None): 
         """
+        Compute the curriculum learning loss between student and teacher outputs, weighted by visibility scores.
+
         Args:
-            stu_out (torch.Tensor): Student output tensor of shape (batch_size, channels, height, width)
-            tea_out (torch.Tensor): Teacher output tensor of shape (batch_size, channels, height, width)
-            visibility_scores (list of torch.Tensor): List of visibility scores for each sample in the batch
-            valid_mask (torch.Tensor, optional): Mask tensor for valid areas, shape (batch_size, height, width)
-            tea_mask (torch.Tensor, optional): Mask tensor for teacher areas, shape (batch_size, channels)
+            stu_out (torch.Tensor): Student model output (B, C, H, W)
+            tea_out (torch.Tensor): Teacher model output (B, C, H, W)
+            visibility_scores (torch.Tensor): Visibility scores for each keypoint (B, C)
+            valid_mask (torch.Tensor, optional): Mask to specify valid regions (B, H, W). Defaults to None.
+            tea_mask (torch.Tensor, optional): Mask to specify teacher's valid keypoints (B, C). Defaults to None.
+
         Returns:
-            torch.Tensor: The weighted loss value
+            torch.Tensor: Weighted consistency loss
         """
-        diff = stu_out - tea_out # b, c, h, w
+        # Compute the difference between student and teacher outputs
+        diff = stu_out - tea_out  # (B, C, H, W)
+        
+        # Apply teacher mask if provided
         if tea_mask is not None:
-            diff *= tea_mask[:, :, None, None] # b, c, h, w
-        loss_map = torch.mean((diff) ** 2, dim=1) # b, h, w
+            diff *= tea_mask[:, :, None, None]  # (B, C, H, W)
+        
+        # Compute the mean squared error across the channel dimension
+        loss_map = torch.mean(diff ** 2, dim=1)  # (B, H, W)
+        
+        # Apply valid mask if provided
         if valid_mask is not None:
-            loss_map = loss_map[valid_mask]
+            loss_map = loss_map[valid_mask]  # (valid_elements,)
+        
+        # Compute the weighted loss using visibility scores
+        # The visibility scores are expected to have the shape (B, C)
+        # We need to expand them to match the dimensions of loss_map
+        visibility_weights = visibility_scores.unsqueeze(-1).unsqueeze(-1)  # (B, C, 1, 1)
+        
+        # Expand visibility_weights to match the shape of loss_map
+        visibility_weights = visibility_weights.expand_as(stu_out)  # (B, C, H, W)
+        
+        # Compute the weighted loss map
+        weighted_loss_map = loss_map * visibility_weights.mean(dim=1)  # (B, H, W)
+        
+        # Return the mean of the weighted loss map
+        return weighted_loss_map.mean()
 
-        # Apply visibility scores
-        batch_size = loss_map.size(0)
-        weighted_loss = 0.0
-        for i in range(batch_size):
-            weighted_loss += visibility_scores[i] * loss_map[i].mean()
+# Define the cross-entropy loss for segmentation maps
+class SegLoss(nn.Module):
+    def __init__(self):
+        super(SegLoss, self).__init__()
+        self.criterion = nn.BCEWithLogitsLoss()
 
-        return weighted_loss / batch_size
+    def forward(self, pred_segmentation, target_segmentation):
+        """
+        Compute the cross-entropy loss between predicted and target segmentation maps.
+
+        Args:
+            pred_segmentation (torch.Tensor): Predicted segmentation map (B, 256, 256)
+            target_segmentation (torch.Tensor): Target segmentation map (B, 256, 256)
+        
+        Returns:
+            torch.Tensor: Cross-entropy loss
+        """
+        return self.criterion(pred_segmentation, target_segmentation)
 
 class ConsSoftmaxLoss(nn.Module):
 

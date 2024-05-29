@@ -141,10 +141,8 @@ MINIRGBD: 7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21
 Action List:-
 
 Code:-
-1. Run without source (SFDA): make loss_s=0
-2. Train manifold prior: clean-split (ground truth), noisy_split (generate from clean split), calc. L1 distances.
+1. Train manifold prior: clean-split (ground truth), noisy_split (generate from clean split), calc. L1 distances.
 3. Finish RL
-4. Make pvt github repo and push code there.
 
 Paper:- (Use Dripta da s paper in parallel)
 1. Introduction

@@ -21,12 +21,6 @@ def faiss_idx_torch(poses):
     index.add(data_all)
     return index, data_all
 
-# def torch_idx(poses):
-#     all_poses = np.copy(poses)
-#     all_poses = all_poses.reshape(len(poses), 26)
-#     data_all = torch.from_numpy(all_poses).to(device='cuda')
-#     return data_all
-
 def dist_calc(quer_pose, nn_poses, k_dist, geodesic=False):
     if not geodesic:
         dist = quer_pose - nn_poses
@@ -93,11 +87,11 @@ def main(args):
         normalize
     ])
     pose_dataset = datasets.__dict__[args.dset]
-    og_pose_dataset = pose_dataset(root=args.dset_root, transforms=transform,
+    og_pose_dataset = pose_dataset(root=args.dset_root, split='prior', transforms=transform,
                                           image_size=image_size, heatmap_size=heatmap_size)
     N = len(og_pose_dataset)
     
-    noise_params = [0.5, 1.0, 2.0, 4.0, 8.0]
+    noise_params = [1.0, 2.0, 4.0, 8.0, 16.0]
 
     save_dir = os.path.join(args.save_dir, args.dset, f'K_{args.k_dist}', 'raw')
     if not os.path.exists(save_dir):

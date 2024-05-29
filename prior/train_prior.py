@@ -16,6 +16,11 @@ sys.path.append('..')
 from lib.meter import AverageMeter, ProgressMeter
 from lib.data import ForeverDataIterator
 
+import warnings
+
+# Ignore UserWarning from torchvision
+warnings.filterwarnings("ignore", category=UserWarning)
+
 def train_model(device, iter_list, model, optimizer, criterion, epoch, args):
     batch_time = AverageMeter('Time', ':4.2f')
     data_time = AverageMeter('Data', ':3.1f')
@@ -143,9 +148,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train prior')
 
-    parser.add_argument("--data-root", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/processed',
+    parser.add_argument("--data-root", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/processed',
                         help="file containing clean poses")
-    parser.add_argument("--out-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/ckpts',
+    parser.add_argument("--out-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/ckpts',
                         help="directory to save all poses")
     parser.add_argument("--batch-size",  type=int, default=1024,
                         help='mini-batch size (default: 1024)')
@@ -155,11 +160,11 @@ if __name__ == '__main__':
                         help="type of loss")
     parser.add_argument("--iters-per-epoch", type=int, default=1000, 
                         help='iterations per epoch')
-    parser.add_argument("--epochs-1", type=int, default=75, 
+    parser.add_argument("--epochs-1", type=int, default=100, #75
                         help='number of total epochs to run')
-    parser.add_argument("--epochs-2", type=int, default=100, 
+    parser.add_argument("--epochs-2", type=int, default=150, #100
                         help='number of total epochs to run')
-    parser.add_argument("--epochs-3", type=int, default=200, 
+    parser.add_argument("--epochs-3", type=int, default=250, #200
                         help='number of total epochs to run')
     parser.add_argument("--seed", type=int, default=0, 
                         help='seed for initializing training. ')
