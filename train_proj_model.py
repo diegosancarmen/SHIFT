@@ -192,11 +192,9 @@ if __name__ == '__main__':
                         help='number of data loading workers (default: 2)')
     parser.add_argument("--seg-threshold", type=float, default=0.5, 
                         help='Binarization Threshold for segmentation mask')
-    parser.add_argument("--loss", type=str, default='l2',
-                        help="type of loss")
     parser.add_argument("--iters-per-epoch", type=int, default=500, 
                         help='iterations per epoch')
-    parser.add_argument("--epochs", type=int, default=30,
+    parser.add_argument("--epochs", type=int, default=10,
                         help='number of total epochs to run')
     parser.add_argument("--seed", type=int, default=0, 
                         help='seed for initializing training. ')
