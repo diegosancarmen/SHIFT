@@ -526,7 +526,7 @@ def main(args: argparse.Namespace):
 
         # train for one epoch
         if epoch < args.pretrain_epoch:
-            pretrain(train_source_iter, train_target_iter, student, style_net, seg_model, kp2seg_model, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
+            pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
         else:
             if epoch == args.pretrain_epoch:
                 pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
@@ -656,7 +656,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--lambda_c', default=1., type=float)
-    parser.add_argument('--lambda_s', default=1., type=float)
+    parser.add_argument('--lambda_s', default=1e-2, type=float)
     parser.add_argument('--lambda_p', default=1e-5, type=float)
     parser.add_argument("--mode", type=str, default='all', choices=['uda', 'visibility', 'prior', 'all'],
                         help="uda = only uda, visibility = only visibility, prior = only prior")
