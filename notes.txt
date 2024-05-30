@@ -141,7 +141,7 @@ MINIRGBD: 7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21
 Action List:-
 
 Code:-
-1. Train manifold prior: clean-split (ground truth), noisy_split (generate from clean split), calc. L1 distances.
+1. See if seg loss and other losses can be fitted in some regimen.
 3. Finish RL
 
 Paper:- (Use Dripta da s paper in parallel)

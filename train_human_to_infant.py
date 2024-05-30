@@ -106,14 +106,13 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
     losses_all = AverageMeter('Loss (all)', ":.4e")
     losses_s = AverageMeter('Loss (s)', ":.4e")
     losses_c = AverageMeter('Loss (c)', ":.4e")
-    w_losses_c = AverageMeter('Weighted_Loss (w_c)', ":.4e")
     losses_seg = AverageMeter('Seg_Loss (seg)', ":.4e")
     losses_p = AverageMeter('Prior Loss (p)', ":.4e")
     acc_s = AverageMeter("Acc (s)", ":3.2f")
 
     progress = ProgressMeter(
         args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_c, w_losses_c, losses_seg, losses_p, acc_s],
+        [batch_time, data_time, losses_all, losses_c, losses_seg, losses_p, acc_s],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -140,12 +139,9 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         weight_t = meta_t_stu['target_weight_ori'].to(device)
 
         if args.mode in ['all', 'visibility']:
-            # Get segmentation maps and scores
-            seg_maps = get_segmentation_masks(seg_model, x_t_stu) #seg_maps: B, 21, H, W
+            seg_maps = get_segmentation_masks(seg_model, x_t_stu) #seg_maps: B, 2, H, W
             seg_maps = torch.argmax(seg_maps, dim=1) # B, H, W
             seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
-            #s_max = calculate_s_max(seg_maps)
-            #visibility_scores = [torch.sum(seg_maps[i]) / s_max for i in range(seg_maps.size(0))]
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -200,7 +196,6 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                         temp = tF.affine(temp, 0., translate=[0., 0.], shear=[_shear_x, _shear_y], scale=1.)
 
                         # randomly select a point to occlude
-                        #candidates = torch.arange(0, k)[conf_table[_b]]
                         candidates = torch.arange(0, k).to(conf_table.device)[conf_table[_b]]
                         _c = np.random.choice(candidates.cpu().numpy())
                         
@@ -244,8 +239,6 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                 y_t_stu_kp = heatmap_to_keypoints(y_t_stu_recon)
                 y_t_stu_segmap = kp2seg_model(y_t_stu_kp)
                 loss_seg = out_criterion(y_t_stu_segmap, seg_maps)
-                #visibility_scores = project_keypoints_onto_segmentation_map(y_t_stu_kp, seg_maps)
-                #weighted_loss_c = cl_criterion(y_t_stu_recon, y_t_tea_recon, visibility_scores, tea_mask=tea_mask)
 
             if args.mode in ['all', 'prior']:
                 ori_stu = datasets.util.get_orientations(y_t_stu)
@@ -255,9 +248,9 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
             loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
 
         if args.mode == 'all':
-            loss_all = lambda_c * loss_seg + (1 - lambda_c) * loss_c + loss_s + args.lambda_p * loss_p
+            loss_all = args.lambda_s * loss_seg + args.lambda_c * loss_c + loss_s + args.lambda_p * loss_p
         elif args.mode == 'visibility':
-            loss_all = lambda_c * loss_seg + (1 - lambda_c) * loss_c + loss_s
+            loss_all = args.lambda_s * loss_seg + args.lambda_c * loss_c + loss_s
         elif args.mode == 'prior':
             loss_all = loss_s + args.lambda_c * loss_c + args.lambda_p * loss_p
         else:
@@ -276,7 +269,6 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         losses_all.update(loss_all, x_s.size(0))
         losses_s.update(loss_s, x_s.size(0))
         losses_c.update(loss_c, x_s.size(0))
-        #w_losses_c.update(weighted_loss_c if args.mode == 'visibility' else 0, x_s.size(0))
         losses_seg.update(loss_seg if args.mode in ['all', 'visibility'] else 0, x_s.size(0))
         losses_p.update(loss_p if args.mode in ['all', 'prior'] else 0, x_s.size(0))
         # measure elapsed time
@@ -434,13 +426,6 @@ def main(args: argparse.Namespace):
     else:
         style_net = None
 
-    criterions = {
-    "mse": JointsMSELoss(),
-    "cons": ConsLoss(),
-    "curriculum": CurriculumLearningLoss(),
-    "seg": SegLoss(),
-    }
-
     criterion = JointsMSELoss()
     con_criterion = ConsLoss()
     cl_criterion = CurriculumLearningLoss()
@@ -461,8 +446,14 @@ def main(args: argparse.Namespace):
         style_net = torch.nn.DataParallel(style_net).cuda()
 
     if args.mode in ['all', 'visibility']:
-        seg_model = SegNet(num_classes=21, pretrained=True).to(device)
-        kp2seg_model = KeypointToSegmentationEncoder(num_keypoints=16, output_size=256).to(device)
+        seg_model = SegNet(num_classes=2, pretrained=True).to(device)
+        kp2seg_model = KeypointToSegmentationEncoder(num_keypoints=train_source_dataset.num_keypoints, output_size=image_size[0]).to(device)
+
+    kp2seg_dict = torch.load(args.kp2seg, map_location='cpu')['model']
+    kp2seg_model.load_state_dict(kp2seg_dict)  
+    kp2seg_model = torch.nn.DataParallel(kp2seg_model).cuda()
+    for ks in kp2seg_model.parameters():
+        ks.requires_grad = False
 
     prior_dict = torch.load(args.prior, map_location='cpu')['model']
     prior.load_state_dict(prior_dict)  
@@ -535,14 +526,14 @@ def main(args: argparse.Namespace):
 
         # train for one epoch
         if epoch < args.pretrain_epoch:
-            pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
+            pretrain(train_source_iter, train_target_iter, student, style_net, seg_model, kp2seg_model, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
         else:
-            # if epoch == args.pretrain_epoch:
-            #     pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
-            #     model_dict = student.state_dict()
-            #     pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-            #     student.load_state_dict(pretrained_dict, strict=False)
-            #     teacher.load_state_dict(pretrained_dict, strict=False)
+            if epoch == args.pretrain_epoch:
+                pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
+                model_dict = student.state_dict()
+                pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+                student.load_state_dict(pretrained_dict, strict=False)
+                teacher.load_state_dict(pretrained_dict, strict=False)
 
             train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
                     out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
@@ -652,6 +643,8 @@ if __name__ == '__main__':
                         help="where restore style_net model parameters from.")
     parser.add_argument("--prior", type=str, default=None,
                         help="where restore prior parameters from.")
+    parser.add_argument("--kp2seg", type=str, default=None,
+                        help="where restore kpt to segmentation mask encoder parameters from.") 
 
     # training parameters
     parser.add_argument('-b', '--batch-size', default=32, type=int,
@@ -663,6 +656,7 @@ if __name__ == '__main__':
     parser.add_argument('--lr', '--learning-rate', default=0.0001, type=float,
                         metavar='LR', help='initial learning rate', dest='lr')
     parser.add_argument('--lambda_c', default=1., type=float)
+    parser.add_argument('--lambda_s', default=1., type=float)
     parser.add_argument('--lambda_p', default=1e-5, type=float)
     parser.add_argument("--mode", type=str, default='all', choices=['uda', 'visibility', 'prior', 'all'],
                         help="uda = only uda, visibility = only visibility, prior = only prior")

@@ -30,16 +30,20 @@ class OldWeightEMA (object):
             p.data.mul_(self.alpha)
             p.data.add_(src_p.data * one_minus_alpha)
 
-
 # Define the encoder to map keypoints to a segmentation map
 class KeypointToSegmentationEncoder(nn.Module):
     def __init__(self, num_keypoints=16, output_size=256):
         super(KeypointToSegmentationEncoder, self).__init__()
         self.fc1 = nn.Linear(num_keypoints * 2, 512)
+        self.bn1 = nn.BatchNorm1d(512)
         self.fc2 = nn.Linear(512, 1024)
-        self.fc3 = nn.Linear(1024, output_size * output_size)
+        self.bn2 = nn.BatchNorm1d(1024)
+        self.fc3 = nn.Linear(1024, 2048)
+        self.bn3 = nn.BatchNorm1d(2048)
+        self.fc4 = nn.Linear(2048, output_size * output_size)
         self.output_size = output_size
-    
+        self.dropout = nn.Dropout(p=0.5)
+
     def forward(self, keypoints):
         """
         Forward pass to map keypoints to a segmentation map.
@@ -48,13 +52,17 @@ class KeypointToSegmentationEncoder(nn.Module):
             keypoints (torch.Tensor): Keypoint coordinates (B, num_keypoints, 2)
         
         Returns:
-            torch.Tensor: Segmentation map (B, 1, output_size, output_size)
+            torch.Tensor: Segmentation map (B, output_size, output_size)
         """
         B, num_keypoints, _ = keypoints.shape
         x = keypoints.view(B, -1)  # Flatten keypoints
-        x = torch.relu(self.fc1(x))
-        x = torch.relu(self.fc2(x))
-        x = torch.sigmoid(self.fc3(x))
+        x = torch.relu(self.bn1(self.fc1(x)))
+        x = self.dropout(x)
+        x = torch.relu(self.bn2(self.fc2(x)))
+        x = self.dropout(x)
+        x = torch.relu(self.bn3(self.fc3(x)))
+        x = self.dropout(x)
+        x = torch.sigmoid(self.fc4(x))
         x = x.view(B, self.output_size, self.output_size)  # Reshape to segmentation map
         return x
 
