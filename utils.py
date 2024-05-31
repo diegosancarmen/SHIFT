@@ -30,19 +30,37 @@ class OldWeightEMA (object):
             p.data.mul_(self.alpha)
             p.data.add_(src_p.data * one_minus_alpha)
 
-# Define the encoder to map keypoints to a segmentation map
 class KeypointToSegmentationEncoder(nn.Module):
-    def __init__(self, num_keypoints=16, output_size=256):
+    def __init__(self, num_keypoints=16, output_size=256, nz=100, ngf=64):
         super(KeypointToSegmentationEncoder, self).__init__()
-        self.fc1 = nn.Linear(num_keypoints * 2, 512)
-        self.bn1 = nn.BatchNorm1d(512)
-        self.fc2 = nn.Linear(512, 1024)
-        self.bn2 = nn.BatchNorm1d(1024)
-        self.fc3 = nn.Linear(1024, 2048)
-        self.bn3 = nn.BatchNorm1d(2048)
-        self.fc4 = nn.Linear(2048, output_size * output_size)
+        self.nz = nz
+        self.fc = nn.Linear(num_keypoints * 2, nz)
+
+        self.main = nn.Sequential(
+            # Input is Z, going into a convolution
+            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
+            nn.BatchNorm2d(ngf * 8),
+            nn.ReLU(True),
+            # State size. (ngf*8) x 4 x 4
+            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 4),
+            nn.ReLU(True),
+            # State size. (ngf*4) x 8 x 8
+            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf * 2),
+            nn.ReLU(True),
+            # State size. (ngf*2) x 16 x 16
+            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
+            nn.BatchNorm2d(ngf),
+            nn.ReLU(True),
+            # State size. (ngf) x 32 x 32
+            nn.ConvTranspose2d(ngf, 1, 4, 2, 1, bias=False),
+            nn.Tanh()
+            # Output size. 1 x 64 x 64
+        )
+
         self.output_size = output_size
-        self.dropout = nn.Dropout(p=0.5)
+        self.upsample = nn.Upsample(size=(output_size, output_size), mode='bilinear', align_corners=False)
 
     def forward(self, keypoints):
         """
@@ -52,18 +70,14 @@ class KeypointToSegmentationEncoder(nn.Module):
             keypoints (torch.Tensor): Keypoint coordinates (B, num_keypoints, 2)
         
         Returns:
-            torch.Tensor: Segmentation map (B, output_size, output_size)
+            torch.Tensor: Segmentation map (B, 1, output_size, output_size)
         """
         B, num_keypoints, _ = keypoints.shape
         x = keypoints.view(B, -1)  # Flatten keypoints
-        x = torch.relu(self.bn1(self.fc1(x)))
-        x = self.dropout(x)
-        x = torch.relu(self.bn2(self.fc2(x)))
-        x = self.dropout(x)
-        x = torch.relu(self.bn3(self.fc3(x)))
-        x = self.dropout(x)
-        x = torch.sigmoid(self.fc4(x))
-        x = x.view(B, self.output_size, self.output_size)  # Reshape to segmentation map
+        x = self.fc(x)
+        x = x.view(B, self.nz, 1, 1)  # Reshape to (B, nz, 1, 1)
+        x = self.main(x)
+        x = self.upsample(x)  # Upsample to the desired output size
         return x
 
 def sigmoid_rampup(current, rampup_length):
@@ -202,40 +216,6 @@ def heatmap_to_keypoints(heatmaps):
     keypoints_x = (max_indices % W).float()
     keypoints = torch.stack((keypoints_x, keypoints_y), dim=2)
     return keypoints
-
-def project_keypoints_onto_segmentation_map(keypoints, segmentation_map):
-    """
-    Project keypoints onto the segmentation map and calculate normalized occlusion scores.
-    
-    Args:
-        keypoints (torch.Tensor): Predicted keypoints from the student model (B, num_keypoints, 2)
-        segmentation_map (torch.Tensor): Segmentation map (B, H, W)
-    
-    Returns:
-        torch.Tensor: Normalized occlusion scores for each keypoint (B, num_keypoints)
-    """
-    B, num_keypoints, _ = keypoints.shape # B, num_keypoints, 2
-    occlusion_scores = torch.zeros(B, num_keypoints, device=keypoints.device)
-    
-    for i in range(B):
-        for j in range(num_keypoints):
-            x, y = keypoints[i, j]
-            x = int(x)
-            y = int(y)
-            
-            if x >= 0 and x < segmentation_map.shape[2] and y >= 0 and y < segmentation_map.shape[1]:
-                
-                occlusion_scores[i, j] = segmentation_map[i, y, x]
-    
-    # Normalize occlusion scores to be between 0 and 1
-    min_scores = occlusion_scores.min(dim=1, keepdim=True)[0]
-    max_scores = occlusion_scores.max(dim=1, keepdim=True)[0]
-    normalized_occlusion_scores = (occlusion_scores - min_scores) / (max_scores - min_scores + 1e-10)  # Adding small value to avoid division by zero
-    
-    # Compute visibility scores as 1 - normalized occlusion scores
-    visibility_scores = 1 - normalized_occlusion_scores
-    
-    return visibility_scores
 
 def calculate_s_max(segmentation_maps):
     batch_size = segmentation_maps.size(0)

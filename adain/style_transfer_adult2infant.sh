@@ -1,3 +1,0 @@
-# MiniRGBD - /data/AmitRoyChowdhury/MINI-RGBD_web
-python train/train_human.py --source SURREAL --target MiniRGBD_mt --source_root '/data/AmitRoyChowdhury/dripta/surreal_processed'  --target_root '/data/AmitRoyChowdhury/MINI-RGBD_web' --exp_name surreal2mrgbd_0_1 --style_weight 0.1
-#python train/train_human.py --source LSP --target MiniRGBD --source_root '/data/AmitRoyChowdhury/sarosij/lsp'  --target_root '/data/AmitRoyChowdhury/MINI-RGBD_web' --exp_name lsp2mrgbd_0_1 --style_weight 0.1

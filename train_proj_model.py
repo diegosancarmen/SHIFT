@@ -40,15 +40,13 @@ def train_model(train_source_iter, device, student, seg_model, model, optimizer,
         iters_per_epoch,
         [batch_time, data_time, losses_s],
         prefix="Epoch: [{}]".format(epoch))   
-    
+
     model.train()
     end = time.time()
 
     scaler = torch.cuda.amp.GradScaler()
 
-    for i in range(args.iters_per_epoch):
-        optimizer.zero_grad()
-
+    for i in range(iters_per_epoch):
         x_s, label_s, weight_s, meta_s = next(train_source_iter)
         x_s = x_s.to(device)
         label_s = label_s.to(device)
@@ -56,23 +54,27 @@ def train_model(train_source_iter, device, student, seg_model, model, optimizer,
         # measure data loading time
         data_time.update(time.time() - end)
 
+        optimizer.zero_grad()
+
         with torch.cuda.amp.autocast():
-            y_s = student(x_s) #B, 16, 64, 64
-            seg_x_s = get_segmentation_masks(seg_model, x_s) #B, 2, 256, 256
-            seg_x_s = torch.argmax(seg_x_s, dim=1) # B, 256, 256
-            seg_x_s = (seg_x_s > args.seg_threshold).float()
+            y_s = student(x_s)  # B, 16, 64, 64
+            seg_x_s = get_segmentation_masks(seg_model, x_s)  # B, 2, 256, 256
+            seg_x_s = torch.argmax(seg_x_s, dim=1).float().unsqueeze(1)  # B, 256, 256
+            #seg_x_s = (seg_x_s > args.seg_threshold).float().unsqueeze(1)  # GT segmentation mask
 
             y_s_kp = heatmap_to_keypoints(y_s)
-            y_s_seg = model(y_s_kp)
-            loss_s = criterion(y_s_seg ,seg_x_s)
+            fake_segmentation = model(y_s_kp)
+            loss_s = criterion(fake_segmentation, seg_x_s)  # Supervised loss
 
-        _, _, _, pred_s = accuracy(y_s.detach().cpu().numpy(),
-                                               label_s.detach().cpu().numpy())
-        loss_all = loss_s 
-        scaler.scale(loss_all).backward()
+        scaler.scale(loss_s).backward()
         scaler.step(optimizer)
         scaler.update()
-        losses_s.update(loss_s, x_s.size(0))
+
+        _, _, _, pred_s = accuracy(y_s.detach().cpu().numpy(),
+                                   label_s.detach().cpu().numpy())
+
+        # Update loss meters
+        losses_s.update(loss_s.item(), x_s.size(0))
 
         batch_time.update(time.time() - end)
         end = time.time()
@@ -110,7 +112,7 @@ def main(args):
     # create model 
     seg_model = SegNet(num_classes=2, pretrained=True).to(device)
     kp2seg_model = KeypointToSegmentationEncoder(num_keypoints=16, output_size=256).to(device)
-    optimizer = torch.optim.Adam(kp2seg_model.parameters(), lr=args.lr)
+    optimizer = torch.optim.Adam(kp2seg_model.parameters(), lr=args.lr, betas=(0.5, 0.999))
     criterion = SegLoss()
     
     # create dataset 
@@ -157,7 +159,7 @@ def main(args):
                 'model': kp2seg_model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch
-            }, os.path.join(args.save_dir, f'{args.dset}_kp2seg.pt')
+            }, os.path.join(args.save_dir, f'{args.dset}_kp2seg_gan.pt')
         )
 
 if __name__ == '__main__':
@@ -194,10 +196,10 @@ if __name__ == '__main__':
                         help='Binarization Threshold for segmentation mask')
     parser.add_argument("--iters-per-epoch", type=int, default=500, 
                         help='iterations per epoch')
-    parser.add_argument("--epochs", type=int, default=10,
+    parser.add_argument("--epochs", type=int, default=150,
                         help='number of total epochs to run')
     parser.add_argument("--seed", type=int, default=0, 
-                        help='seed for initializing training. ')
+                        help='seed for initializing training.')
     parser.add_argument("--print-freq", type=int, default=100, 
                         help='print frequency (default: 100)')
     parser.add_argument("--save-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/kp2seg_data/',

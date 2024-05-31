@@ -31,8 +31,6 @@ from utils import *
 from prior.models import  *
 
 import warnings
-
-# Ignore UserWarning from torchvision
 warnings.filterwarnings("ignore", category=UserWarning)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -140,8 +138,8 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
 
         if args.mode in ['all', 'visibility']:
             seg_maps = get_segmentation_masks(seg_model, x_t_stu) #seg_maps: B, 2, H, W
-            seg_maps = torch.argmax(seg_maps, dim=1) # B, H, W
-            seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
+            seg_maps = torch.argmax(seg_maps, dim=1).float() # B, H, W
+            #seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
 
         # measure data loading time
         data_time.update(time.time() - end)
@@ -238,6 +236,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
             if args.mode in ['all', 'visibility']:
                 y_t_stu_kp = heatmap_to_keypoints(y_t_stu_recon)
                 y_t_stu_segmap = kp2seg_model(y_t_stu_kp)
+                y_t_stu_segmap = torch.argmax(y_t_stu_segmap, dim=1).float() # B, H, W
                 loss_seg = out_criterion(y_t_stu_segmap, seg_maps)
 
             if args.mode in ['all', 'prior']:
@@ -658,15 +657,15 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_c', default=1., type=float)
     parser.add_argument('--lambda_s', default=1e-2, type=float)
     parser.add_argument('--lambda_p', default=1e-5, type=float)
-    parser.add_argument("--mode", type=str, default='all', choices=['uda', 'visibility', 'prior', 'all'],
-                        help="uda = only uda, visibility = only visibility, prior = only prior")
+    parser.add_argument("--mode", type=str, default='all', choices=['visibility', 'prior', 'all'],
+                        help="visibility = only visibility, prior = only prior")
     parser.add_argument('--step_p', default=30, type=int)
     parser.add_argument('--temp_cl', default=10., type=float)
     parser.add_argument('--seg_threshold', default=0.5, type=float)
     parser.add_argument('--teacher_alpha', default=0.999, type=float)
     parser.add_argument('--lr-step', default=[45, 60], type=tuple, help='parameter for lr scheduler')
     parser.add_argument('--lr-factor', default=0.1, type=float, help='parameter for lr scheduler')
-    parser.add_argument('-j', '--workers', default=1, type=int, metavar='N',
+    parser.add_argument('-j', '--workers', default=2, type=int, metavar='N',
                         help='number of data loading workers (default: 2)')
     parser.add_argument('--epochs', default=70, type=int, metavar='N',
                         help='number of total epochs to run')
