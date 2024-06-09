@@ -21,11 +21,10 @@ from lib.data import ForeverDataIterator
 import lib.transforms.keypoint_detection as T
 import lib.datasets as datasets
 from lib.models.seg_net import SegNet, get_segmentation_masks
+from lib.models.map_net import KeypointToSegmentationEncoder, weights_init
 from lib.keypoint_detection import accuracy
 from lib.models.loss import *
 from utils import *
-
-import warnings
 
 # Ignore UserWarning from torchvision
 warnings.filterwarnings("ignore", category=UserWarning)
@@ -58,13 +57,16 @@ def train_model(train_source_iter, device, student, seg_model, model, optimizer,
 
         with torch.cuda.amp.autocast():
             y_s = student(x_s)  # B, 16, 64, 64
-            seg_x_s = get_segmentation_masks(seg_model, x_s)  # B, 2, 256, 256
-            seg_x_s = torch.argmax(seg_x_s, dim=1).float().unsqueeze(1)  # B, 256, 256
+            seg_x_s = get_segmentation_masks(seg_model, x_s)  # B, num_classes, 256, 256
+            seg_x_s = torch.argmax(seg_x_s, dim=1).float()  # B, 256, 256
             #seg_x_s = (seg_x_s > args.seg_threshold).float().unsqueeze(1)  # GT segmentation mask
 
-            y_s_kp = heatmap_to_keypoints(y_s)
-            fake_segmentation = model(y_s_kp)
-            loss_s = criterion(fake_segmentation, seg_x_s)  # Supervised loss
+            y_s_kp = heatmap_to_keypoints(y_s) # B, 16, 2
+            seg_y_s = model(y_s_kp) # B, num_classes, 256, 256
+            seg_y_s = softargmax(seg_y_s)  # B, 256, 256
+            # seg_y_s2 = torch.argmax(seg_y_s, dim=1).float()  # B, 256, 256
+            # print(((seg_y_s1-seg_y_s2)**2).sum())
+            loss_s = criterion(seg_y_s, seg_x_s)  # Supervised loss
 
         scaler.scale(loss_s).backward()
         scaler.step(optimizer)
@@ -110,8 +112,9 @@ def main(args):
 
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     # create model 
-    seg_model = SegNet(num_classes=2, pretrained=True).to(device)
-    kp2seg_model = KeypointToSegmentationEncoder(num_keypoints=16, output_size=256).to(device)
+    seg_model = SegNet(num_classes=21, pretrained=True).to(device)
+    kp2seg_model = KeypointToSegmentationEncoder(num_classes=21, num_keypoints=16, output_size=256).to(device)
+    kp2seg_model.apply(weights_init)
     optimizer = torch.optim.Adam(kp2seg_model.parameters(), lr=args.lr, betas=(0.5, 0.999))
     criterion = SegLoss()
     
@@ -196,7 +199,7 @@ if __name__ == '__main__':
                         help='Binarization Threshold for segmentation mask')
     parser.add_argument("--iters-per-epoch", type=int, default=500, 
                         help='iterations per epoch')
-    parser.add_argument("--epochs", type=int, default=150,
+    parser.add_argument("--epochs", type=int, default=100,
                         help='number of total epochs to run')
     parser.add_argument("--seed", type=int, default=0, 
                         help='seed for initializing training.')

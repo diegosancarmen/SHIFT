@@ -30,55 +30,19 @@ class OldWeightEMA (object):
             p.data.mul_(self.alpha)
             p.data.add_(src_p.data * one_minus_alpha)
 
-class KeypointToSegmentationEncoder(nn.Module):
-    def __init__(self, num_keypoints=16, output_size=256, nz=100, ngf=64):
-        super(KeypointToSegmentationEncoder, self).__init__()
-        self.nz = nz
-        self.fc = nn.Linear(num_keypoints * 2, nz)
+def softargmax(segm, alpha=65000.0):
+    """
+    Replacement for torch.argmax without breaking the gradient.
+    """
+    B, N, _, _ = segm.size()
+    segm = segm * alpha
+    segm = segm - segm.max(dim=1, keepdim=True)[0]
+    softmax = torch.exp(segm) / torch.sum(torch.exp(segm), dim=1, keepdim=True) #F.softmax(segm, dim=1)
+    indices_kernel = ((torch.arange(1,N+1).unsqueeze(0)).unsqueeze(-1)).unsqueeze(-1).cuda()
+    conv = softmax * indices_kernel
+    indices = conv.sum(1) - 1
 
-        self.main = nn.Sequential(
-            # Input is Z, going into a convolution
-            nn.ConvTranspose2d(nz, ngf * 8, 4, 1, 0, bias=False),
-            nn.BatchNorm2d(ngf * 8),
-            nn.ReLU(True),
-            # State size. (ngf*8) x 4 x 4
-            nn.ConvTranspose2d(ngf * 8, ngf * 4, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 4),
-            nn.ReLU(True),
-            # State size. (ngf*4) x 8 x 8
-            nn.ConvTranspose2d(ngf * 4, ngf * 2, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf * 2),
-            nn.ReLU(True),
-            # State size. (ngf*2) x 16 x 16
-            nn.ConvTranspose2d(ngf * 2, ngf, 4, 2, 1, bias=False),
-            nn.BatchNorm2d(ngf),
-            nn.ReLU(True),
-            # State size. (ngf) x 32 x 32
-            nn.ConvTranspose2d(ngf, 1, 4, 2, 1, bias=False),
-            nn.Tanh()
-            # Output size. 1 x 64 x 64
-        )
-
-        self.output_size = output_size
-        self.upsample = nn.Upsample(size=(output_size, output_size), mode='bilinear', align_corners=False)
-
-    def forward(self, keypoints):
-        """
-        Forward pass to map keypoints to a segmentation map.
-
-        Args:
-            keypoints (torch.Tensor): Keypoint coordinates (B, num_keypoints, 2)
-        
-        Returns:
-            torch.Tensor: Segmentation map (B, 1, output_size, output_size)
-        """
-        B, num_keypoints, _ = keypoints.shape
-        x = keypoints.view(B, -1)  # Flatten keypoints
-        x = self.fc(x)
-        x = x.view(B, self.nz, 1, 1)  # Reshape to (B, nz, 1, 1)
-        x = self.main(x)
-        x = self.upsample(x)  # Upsample to the desired output size
-        return x
+    return indices
 
 def sigmoid_rampup(current, rampup_length):
     """Exponential rampup from https://arxiv.org/abs/1610.02242"""

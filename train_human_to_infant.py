@@ -27,6 +27,7 @@ from lib.keypoint_detection import accuracy
 from lib.logger import CompleteLogger
 from lib.models import Style_net
 from lib.models.seg_net import SegNet, get_segmentation_masks
+from lib.models.map_net import KeypointToSegmentationEncoder
 from utils import *
 from prior.models import  *
 
@@ -104,7 +105,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
     losses_all = AverageMeter('Loss (all)', ":.4e")
     losses_s = AverageMeter('Loss (s)', ":.4e")
     losses_c = AverageMeter('Loss (c)', ":.4e")
-    losses_seg = AverageMeter('Seg_Loss (seg)', ":.4e")
+    losses_seg = AverageMeter('Seg Loss (seg)', ":.4e")
     losses_p = AverageMeter('Prior Loss (p)', ":.4e")
     acc_s = AverageMeter("Acc (s)", ":3.2f")
 
@@ -137,7 +138,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
         weight_t = meta_t_stu['target_weight_ori'].to(device)
 
         if args.mode in ['all', 'visibility']:
-            seg_maps = get_segmentation_masks(seg_model, x_t_stu) #seg_maps: B, 2, H, W
+            seg_maps = get_segmentation_masks(seg_model, x_t_stu) #seg_maps: B, num_classes, H, W
             seg_maps = torch.argmax(seg_maps, dim=1).float() # B, H, W
             #seg_maps = (seg_maps > args.seg_threshold).float()  # Binarize segmentation maps
 
@@ -236,7 +237,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
             if args.mode in ['all', 'visibility']:
                 y_t_stu_kp = heatmap_to_keypoints(y_t_stu_recon)
                 y_t_stu_segmap = kp2seg_model(y_t_stu_kp)
-                y_t_stu_segmap = torch.argmax(y_t_stu_segmap, dim=1).float() # B, H, W
+                y_t_stu_segmap = softargmax(y_t_stu_segmap) # B, H, W
                 loss_seg = out_criterion(y_t_stu_segmap, seg_maps)
 
             if args.mode in ['all', 'prior']:
@@ -383,6 +384,7 @@ def main(args: argparse.Namespace):
                                           image_size=image_size, heatmap_size=heatmap_size)
     train_source_loader = DataLoader(train_source_dataset, batch_size=args.batch_size,
                                      shuffle=True, num_workers=args.workers, pin_memory=True, drop_last=True)
+    #Change the split to 'validate' for oracle results. 
     val_source_dataset = source_dataset(root=args.source_root, split='test', transforms=val_transform,
                                         image_size=image_size, heatmap_size=heatmap_size)
     val_source_loader = DataLoader(val_source_dataset, batch_size=args.test_batch, shuffle=False, pin_memory=True)
@@ -448,17 +450,17 @@ def main(args: argparse.Namespace):
         seg_model = SegNet(num_classes=2, pretrained=True).to(device)
         kp2seg_model = KeypointToSegmentationEncoder(num_keypoints=train_source_dataset.num_keypoints, output_size=image_size[0]).to(device)
 
-    kp2seg_dict = torch.load(args.kp2seg, map_location='cpu')['model']
-    kp2seg_model.load_state_dict(kp2seg_dict)  
-    kp2seg_model = torch.nn.DataParallel(kp2seg_model).cuda()
-    for ks in kp2seg_model.parameters():
-        ks.requires_grad = False
-
-    prior_dict = torch.load(args.prior, map_location='cpu')['model']
-    prior.load_state_dict(prior_dict)  
-    prior = torch.nn.DataParallel(prior).cuda()
-    for p in prior.parameters():
-        p.requires_grad = False
+        kp2seg_dict = torch.load(args.kp2seg, map_location='cpu')['model']
+        kp2seg_model.load_state_dict(kp2seg_dict)  
+        kp2seg_model = torch.nn.DataParallel(kp2seg_model).cuda()
+        for ks in kp2seg_model.parameters():
+            ks.requires_grad = False
+    if args.mode in ['all', 'prior']:
+        prior_dict = torch.load(args.prior, map_location='cpu')['model']
+        prior.load_state_dict(prior_dict)  
+        prior = torch.nn.DataParallel(prior).cuda()
+        for p in prior.parameters():
+            p.requires_grad = False
 
     # optionally resume from a checkpoint
     start_epoch = 0
@@ -523,24 +525,26 @@ def main(args: argparse.Namespace):
 
         lambda_c = torch.exp(torch.tensor(-epoch / args.temp_cl, dtype=torch.float))
 
-        # train for one epoch
-        if epoch < args.pretrain_epoch:
+        if args.mode == 'oracle': # Fully supervised
             pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
         else:
-            if epoch == args.pretrain_epoch:
-                pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
-                model_dict = student.state_dict()
-                pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
-                student.load_state_dict(pretrained_dict, strict=False)
-                teacher.load_state_dict(pretrained_dict, strict=False)
+            if epoch < args.pretrain_epoch:
+                pretrain(train_source_iter, train_target_iter, student, style_net, criterion, stu_optimizer, epoch, visualize if args.debug else None, args)
+            else:
+                if epoch == args.pretrain_epoch:
+                    pretrained_dict = torch.load(logger.get_checkpoint_path('best_pt'), map_location='cpu')['student']
+                    model_dict = student.state_dict()
+                    pretrained_dict = {k: v for k, v in pretrained_dict.items() if k in model_dict}
+                    student.load_state_dict(pretrained_dict, strict=False)
+                    teacher.load_state_dict(pretrained_dict, strict=False)
 
-            train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
-                    out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
-            lambda_c_values.append(lambda_c.item())
-            epochs.append(epoch+1)
+                train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
+                        out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
+                lambda_c_values.append(lambda_c.item())
+                epochs.append(epoch+1)
 
         # evaluate on validation set
-        if epoch < args.pretrain_epoch:
+        if epoch < args.pretrain_epoch or args.mode == 'oracle':
             source_val_acc = validate(val_source_loader, student, criterion, None, args)
             target_val_acc = validate(val_target_loader, student, criterion, visualize if args.debug else None, args)
         else:
@@ -657,8 +661,8 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_c', default=1., type=float)
     parser.add_argument('--lambda_s', default=1e-2, type=float)
     parser.add_argument('--lambda_p', default=1e-5, type=float)
-    parser.add_argument("--mode", type=str, default='all', choices=['visibility', 'prior', 'all'],
-                        help="visibility = only visibility, prior = only prior")
+    parser.add_argument("--mode", type=str, default='all', choices=['visibility', 'prior', 'all', 'oracle'],
+                        help="visibility = only visibility, prior = only prior, oracle: fully supervised training.")
     parser.add_argument('--step_p', default=30, type=int)
     parser.add_argument('--temp_cl', default=10., type=float)
     parser.add_argument('--seg_threshold', default=0.5, type=float)

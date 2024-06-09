@@ -12,8 +12,7 @@ class SegNet(nn.Module):
     """
     def __init__(self, num_classes=21, pretrained=True):
         super(SegNet, self).__init__()
-        self.segmentation_model = models.segmentation.deeplabv3_resnet50(pretrained=pretrained)
-        self.segmentation_model.classifier[4] = nn.Conv2d(256, num_classes, kernel_size=1)
+        self.segmentation_model = models.segmentation.deeplabv3_resnet50(pretrained=pretrained, num_classes=21)
 
     def forward(self, x):
         return self.segmentation_model(x)['out']

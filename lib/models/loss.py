@@ -182,7 +182,7 @@ class CurriculumLearningLoss(nn.Module):
 class SegLoss(nn.Module):
     def __init__(self):
         super(SegLoss, self).__init__()
-        self.criterion = nn.BCEWithLogitsLoss()
+        self.criterion = nn.CrossEntropyLoss()
 
     def forward(self, pred_segmentation, target_segmentation):
         """
@@ -195,6 +195,7 @@ class SegLoss(nn.Module):
         Returns:
             torch.Tensor: Cross-entropy loss
         """
+        assert pred_segmentation.size() == target_segmentation.size()
         return self.criterion(pred_segmentation, target_segmentation)
 
 class ConsSoftmaxLoss(nn.Module):
