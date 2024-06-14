@@ -1,5 +1,6 @@
 import os 
 import argparse 
+import warnings
 from tqdm import tqdm
 import faiss
 import faiss.contrib.torch_utils
@@ -10,6 +11,8 @@ import sys
 sys.path.append('..')
 import lib.transforms.keypoint_detection as T
 import lib.datasets as datasets
+
+warnings.filterwarnings("ignore", category=UserWarning)
 
 def faiss_idx_torch(poses):
     all_poses = np.copy(poses)
@@ -87,7 +90,7 @@ def main(args):
         normalize
     ])
     pose_dataset = datasets.__dict__[args.dset]
-    og_pose_dataset = pose_dataset(root=args.dset_root, split='prior', transforms=transform,
+    og_pose_dataset = pose_dataset(root=args.dset_root, split='train', transforms=transform,
                                           image_size=image_size, heatmap_size=heatmap_size)
     N = len(og_pose_dataset)
     

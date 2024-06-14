@@ -26,7 +26,6 @@ from lib.keypoint_detection import accuracy
 from lib.models.loss import *
 from utils import *
 
-# Ignore UserWarning from torchvision
 warnings.filterwarnings("ignore", category=UserWarning)
 
 def train_model(train_source_iter, device, student, seg_model, model, optimizer, criterion, epoch, visualize, args):
@@ -64,8 +63,6 @@ def train_model(train_source_iter, device, student, seg_model, model, optimizer,
             y_s_kp = heatmap_to_keypoints(y_s) # B, 16, 2
             seg_y_s = model(y_s_kp) # B, num_classes, 256, 256
             seg_y_s = softargmax(seg_y_s)  # B, 256, 256
-            # seg_y_s2 = torch.argmax(seg_y_s, dim=1).float()  # B, 256, 256
-            # print(((seg_y_s1-seg_y_s2)**2).sum())
             loss_s = criterion(seg_y_s, seg_x_s)  # Supervised loss
 
         scaler.scale(loss_s).backward()

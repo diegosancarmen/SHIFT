@@ -31,7 +31,6 @@ from lib.models.map_net import KeypointToSegmentationEncoder
 from utils import *
 from prior.models import  *
 
-import warnings
 warnings.filterwarnings("ignore", category=UserWarning)
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")

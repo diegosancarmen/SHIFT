@@ -137,22 +137,3 @@ noseVertex #24
 UDA joint indices order:
 SURREAL: 7, 4, 1, 2, 5, 8, 0, 9, 12, 15, 20, 18, 13, 14, 19, 21
 MINIRGBD: 7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21
-
-Action List:-
-
-Code:-
-1. Train g properly.
-2. Write the inference code --> ee243
-3. Run the supervised (oracle results) --> slides
-4. Draw the pipeline dia for both meeting and ee243
-5. Update slides with 3 and 4.
-6. retrain the prior with 50% of minirgbd and test on syrip.
-
-Paper:- (Use Dripta da s paper in parallel)
-1. Introduction
-2. Related Works: Human Pose Estimation, Infant Pose Estimation, UDA in Pose Estimation (RegDA, CCCL)
-3. Methodology: make diagram, 
-4. Results (must be extended atleast till 6pgs): 
-
-Presentation:-
-Update slides + borrow stuff from proj proposal + start ee243 poster

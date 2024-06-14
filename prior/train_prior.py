@@ -16,9 +16,6 @@ sys.path.append('..')
 from lib.meter import AverageMeter, ProgressMeter
 from lib.data import ForeverDataIterator
 
-import warnings
-
-# Ignore UserWarning from torchvision
 warnings.filterwarnings("ignore", category=UserWarning)
 
 def train_model(device, iter_list, model, optimizer, criterion, epoch, args):
@@ -160,9 +157,9 @@ if __name__ == '__main__':
                         help="type of loss")
     parser.add_argument("--iters-per-epoch", type=int, default=1000, 
                         help='iterations per epoch')
-    parser.add_argument("--epochs-1", type=int, default=100, #75
+    parser.add_argument("--epochs-1", type=int, default=75, #75
                         help='number of total epochs to run')
-    parser.add_argument("--epochs-2", type=int, default=150, #100
+    parser.add_argument("--epochs-2", type=int, default=100, #100
                         help='number of total epochs to run')
     parser.add_argument("--epochs-3", type=int, default=250, #200
                         help='number of total epochs to run')
