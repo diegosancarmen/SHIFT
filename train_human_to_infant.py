@@ -7,7 +7,6 @@ import shutil
 import os
 import shutil
 from tqdm import tqdm
-
 import torch
 import torch.backends.cudnn as cudnn
 from torch.optim import Adam, SGD
@@ -16,6 +15,7 @@ from torch.utils.data import DataLoader
 from torchvision.transforms import Compose, ToPILImage
 import torch.nn.functional as F
 import torchvision.transforms.functional as tF
+
 import lib.models as models
 from lib.models.loss import *
 import lib.datasets as datasets
@@ -243,6 +243,9 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                 ori_stu = datasets.util.get_orientations(y_t_stu)
                 prior_score_stu = prior(ori_stu)
                 loss_p = prior_score_stu.mean()
+                if torch.isnan(loss_p):
+                    print("Prior Loss has stopped backpropagating")
+                    sys.exit()
             
             loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
 
@@ -310,7 +313,7 @@ def validate(val_loader, model, criterion, visualize, args: argparse.Namespace):
 
             # measure accuracy and record loss
             losses.update(loss.item(), x.size(0))
-            acc_per_points, avg_acc, cnt, pred = accuracy(y.cpu().numpy(),
+            acc_per_points, _, cnt, pred = accuracy(y.cpu().numpy(),
                                                           label.cpu().numpy())
             acc.update(acc_per_points, x.size(0))
 
@@ -460,6 +463,7 @@ def main(args: argparse.Namespace):
         prior = torch.nn.DataParallel(prior).cuda()
         for p in prior.parameters():
             p.requires_grad = False
+        seg_model = kp2seg_model = None
 
     # optionally resume from a checkpoint
     start_epoch = 0
@@ -537,7 +541,11 @@ def main(args: argparse.Namespace):
                     student.load_state_dict(pretrained_dict, strict=False)
                     teacher.load_state_dict(pretrained_dict, strict=False)
 
-                train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
+                if args.mode == 'baseline':
+                    train(train_source_iter, train_target_iter, student, teacher, style_net, None, None, None, criterion, con_criterion, cl_criterion,
+                        out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
+                else:
+                    train(train_source_iter, train_target_iter, student, teacher, style_net, seg_model, kp2seg_model, prior, criterion, con_criterion, cl_criterion,
                         out_criterion, stu_optimizer, tea_optimizer, lambda_c, epoch,visualize if args.debug else None, args)
                 lambda_c_values.append(lambda_c.item())
                 epochs.append(epoch+1)
@@ -660,8 +668,8 @@ if __name__ == '__main__':
     parser.add_argument('--lambda_c', default=1., type=float)
     parser.add_argument('--lambda_s', default=1e-2, type=float)
     parser.add_argument('--lambda_p', default=1e-5, type=float)
-    parser.add_argument("--mode", type=str, default='all', choices=['visibility', 'prior', 'all', 'oracle'],
-                        help="visibility = only visibility, prior = only prior, oracle: fully supervised training.")
+    parser.add_argument("--mode", type=str, default='all', choices=['visibility', 'prior', 'all', 'baseline', 'oracle'],
+                        help="visibility = seg mask, prior = only prior, oracle: fully supervised training.")
     parser.add_argument('--step_p', default=30, type=int)
     parser.add_argument('--temp_cl', default=10., type=float)
     parser.add_argument('--seg_threshold', default=0.5, type=float)

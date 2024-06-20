@@ -3,7 +3,7 @@ from .lsp import LSP
 from .lsp_mt import LSP_mt
 from .human36m import Human36M
 from .human36m_mt import Human36M_mt
-#from .syrip import SYRIP
-#from .syrip_mt import SYRIP_mt
+from .syrip import SyRIP
+from .syrip_mt import SyRIP_mt
 from .minirgbd import MiniRGBD
 from .minirgbd_mt import MiniRGBD_mt
