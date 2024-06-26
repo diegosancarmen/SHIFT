@@ -94,9 +94,9 @@ def main(args):
     dset_r = TensorDataset(x_r,y_r)
     dset_n_1 = TensorDataset(x_n_1,y_n_1)
     dset_n_2 = TensorDataset(x_n_2,y_n_2) 
-    loader_r = DataLoader(dset_r, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    loader_n_1 = DataLoader(dset_n_1, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True)
-    loader_n_2 = DataLoader(dset_n_2, batch_size=args.batch_size, shuffle=True, num_workers=2, pin_memory=True) 
+    loader_r = DataLoader(dset_r, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    loader_n_1 = DataLoader(dset_n_1, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True)
+    loader_n_2 = DataLoader(dset_n_2, batch_size=args.batch_size, shuffle=True, num_workers=4, pin_memory=True) 
 
     iter_r = ForeverDataIterator(loader_r)
     iter_n_1 = ForeverDataIterator(loader_n_1)

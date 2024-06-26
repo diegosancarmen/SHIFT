@@ -70,7 +70,6 @@ class MiniRGBD(Body16KeypointDataset):
             self.samples.append((img_path, data[item]['pose_2d']))
         #self.images, self.db_2d, self.db_3d, self.frame_names = self.read_data() #image, pose_2d, pose_3d, frame_name
         
-        #(2, 5, 11, 1, 4, 10, 3, 9, 12, 15, 13, 18, 20, 14, 19, 21)
         self.joints_index = (7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21)
         self.visible = np.ones(16, dtype=np.float32)
 

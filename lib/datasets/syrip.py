@@ -40,7 +40,8 @@ class SyRIP(Body16KeypointDataset):
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/SyRIP/SyRIP_data_split/300S/SyRIP.npy', allow_pickle=True).item()
+        #data = np.load('/data/AmitRoyChowdhury/SyRIP/SyRIP_data_split/300S/SyRIP.npy', allow_pickle=True).item()
+        data = np.load('/data/AmitRoyChowdhury/sarosij/SyRIP/prior/SyRIP_200R.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             if split in ['train', 'prior']:
@@ -63,7 +64,7 @@ class SyRIP(Body16KeypointDataset):
     def __getitem__(self, index):
         sample = self.samples[index]
         image_name = sample[0]
-        image = Image.open(image_name).convert('RGB')
+        image = Image.open(image_name)
         keypoint2d = sample[1][self.joints_index, :2]
         
         image, data = self.transforms(image, keypoint2d=keypoint2d)

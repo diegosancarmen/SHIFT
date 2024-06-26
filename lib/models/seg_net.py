@@ -18,7 +18,6 @@ class SegNet(nn.Module):
         return self.segmentation_model(x)['out']
 
 def get_segmentation_masks(model, images):
-    model.eval()
     with torch.no_grad():
         outputs = model(images)
     return outputs

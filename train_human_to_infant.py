@@ -110,7 +110,7 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
 
     progress = ProgressMeter(
         args.iters_per_epoch,
-        [batch_time, data_time, losses_all, losses_c, losses_seg, losses_p, acc_s],
+        [batch_time, data_time, losses_all, losses_s, losses_c, losses_seg, losses_p, acc_s],
         prefix="Epoch: [{}]".format(epoch))
 
     # switch to train mode
@@ -243,13 +243,14 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                 ori_stu = datasets.util.get_orientations(y_t_stu)
                 prior_score_stu = prior(ori_stu)
                 loss_p = prior_score_stu.mean()
-                if torch.isnan(loss_p):
-                    print("Prior Loss has stopped backpropagating")
-                    sys.exit()
-            
+                # if torch.isnan(loss_p):
+                #     print("Prior Loss has stopped backpropagating")
+                #     sys.exit()
+
             loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
 
         if args.mode == 'all':
+            loss_seg = 0.
             loss_all = args.lambda_s * loss_seg + args.lambda_c * loss_c + loss_s + args.lambda_p * loss_p
         elif args.mode == 'visibility':
             loss_all = args.lambda_s * loss_seg + args.lambda_c * loss_c + loss_s
@@ -463,7 +464,8 @@ def main(args: argparse.Namespace):
         prior = torch.nn.DataParallel(prior).cuda()
         for p in prior.parameters():
             p.requires_grad = False
-        seg_model = kp2seg_model = None
+        if args.mode == 'prior':
+            seg_model = kp2seg_model = None
 
     # optionally resume from a checkpoint
     start_epoch = 0
