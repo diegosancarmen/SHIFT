@@ -91,7 +91,7 @@ def main(args):
     ])
     pose_dataset = datasets.__dict__[args.dset]
     # For SyRIP, split = 'prior', MiniRGBD, split = 'train'
-    og_pose_dataset = pose_dataset(root=args.dset_root, split='prior', transforms=transform,
+    og_pose_dataset = pose_dataset(root=args.dset_root, split='train', transforms=transform,
                                           image_size=image_size, heatmap_size=heatmap_size)
     N = len(og_pose_dataset)
     

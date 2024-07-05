@@ -41,7 +41,7 @@ class SyRIP(Body16KeypointDataset):
         # Load data
         self.samples = []
         #data = np.load('/data/AmitRoyChowdhury/SyRIP/SyRIP_data_split/300S/SyRIP.npy', allow_pickle=True).item()
-        data = np.load('/data/AmitRoyChowdhury/sarosij/SyRIP/prior/SyRIP_200R.npy', allow_pickle=True).item()
+        data = np.load('/data/AmitRoyChowdhury/sarosij/SyRIP/splits/SyRIP_all.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             if split in ['train', 'prior']:

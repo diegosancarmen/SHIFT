@@ -43,5 +43,5 @@ for key in all_real_keys:
 print(len(list(d['prior'].keys())))
 print(len(list(d['train'].keys())))
 
-np.save('/data/AmitRoyChowdhury/sarosij/SyRIP/prior/SyRIP_200R.npy', d)
+np.save('/data/AmitRoyChowdhury/sarosij/SyRIP/splits/SyRIP_all.npy', d)
 print('Data Preprocessed!')

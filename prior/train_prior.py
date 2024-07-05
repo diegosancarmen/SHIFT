@@ -4,7 +4,6 @@ import warnings
 import os
 import sys
 import time
-
 import numpy as np 
 import torch 
 import torch.backends.cudnn as cudnn
@@ -72,6 +71,12 @@ def main(args):
     # create model 
     model = PoseNDF()
     model = model.to(device)
+    if args.mode == 'fine-tune':
+        prior_dict = torch.load(args.ftpath, map_location='cpu')['model']
+        model.load_state_dict(prior_dict)  
+        model = torch.nn.DataParallel(model).cuda()
+        for p in model.parameters():
+            p.requires_grad = True
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
     # optimizer = torch.optim.SGD(model.parameters(), lr=args.lr, momentum=0.9)
     if args.loss == 'l1':
@@ -112,7 +117,7 @@ def main(args):
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch
-            }, os.path.join(args.out_dir, 'prior_stage_1.pt')
+            }, os.path.join(args.out_dir, 'ft_prior_stage_1.pt' if args.mode == 'fine-tune' else 'prior_stage_1.pt')
         )
     
     # STAGE 2
@@ -125,7 +130,7 @@ def main(args):
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch
-            }, os.path.join(args.out_dir, 'prior_stage_2.pt')
+            }, os.path.join(args.out_dir, 'ft_prior_stage_2.pt' if args.mode == 'fine-tune' else 'prior_stage_2.pt')
         )
 
     # STAGE 3
@@ -138,7 +143,7 @@ def main(args):
                 'model': model.state_dict(),
                 'optimizer': optimizer.state_dict(),
                 'epoch': epoch
-            }, os.path.join(args.out_dir, 'prior_stage_3.pt')
+            }, os.path.join(args.out_dir, 'ft_prior_stage_3.pt' if args.mode == 'fine-tune' else 'prior_stage_3.pt')
         )
 
 
@@ -149,6 +154,9 @@ if __name__ == '__main__':
                         help="file containing clean poses")
     parser.add_argument("--out-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/ckpts',
                         help="directory to save all poses")
+    parser.add_argument("--ftpath", type=str, help="directory to resume fine-tuning from")
+    parser.add_argument("--mode", type=str, choices=['train', 'fine-tune'], default='train',
+                        help="train=from source, fine-tune=train and finetune on target")
     parser.add_argument("--batch-size",  type=int, default=1024,
                         help='mini-batch size (default: 1024)')
     parser.add_argument("--lr", type=float, default=3e-4, 
@@ -161,7 +169,7 @@ if __name__ == '__main__':
                         help='number of total epochs to run')
     parser.add_argument("--epochs-2", type=int, default=100, #100
                         help='number of total epochs to run')
-    parser.add_argument("--epochs-3", type=int, default=250, #200
+    parser.add_argument("--epochs-3", type=int, default=200, #200
                         help='number of total epochs to run')
     parser.add_argument("--seed", type=int, default=0, 
                         help='seed for initializing training. ')

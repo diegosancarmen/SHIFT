@@ -7,6 +7,7 @@ import shutil
 import os
 import shutil
 from tqdm import tqdm
+from collections import OrderedDict
 import torch
 import torch.backends.cudnn as cudnn
 from torch.optim import Adam, SGD
@@ -243,14 +244,12 @@ def train(train_source_iter, train_target_iter, student, teacher, style_net, seg
                 ori_stu = datasets.util.get_orientations(y_t_stu)
                 prior_score_stu = prior(ori_stu)
                 loss_p = prior_score_stu.mean()
-                # if torch.isnan(loss_p):
-                #     print("Prior Loss has stopped backpropagating")
-                #     sys.exit()
+                if torch.isnan(loss_p):
+                    loss_p = 0.
 
             loss_c = con_criterion(y_t_stu_recon, y_t_tea_recon, tea_mask=tea_mask)
 
         if args.mode == 'all':
-            loss_seg = 0.
             loss_all = args.lambda_s * loss_seg + args.lambda_c * loss_c + loss_s + args.lambda_p * loss_p
         elif args.mode == 'visibility':
             loss_all = args.lambda_s * loss_seg + args.lambda_c * loss_c + loss_s
@@ -460,7 +459,14 @@ def main(args: argparse.Namespace):
             ks.requires_grad = False
     if args.mode in ['all', 'prior']:
         prior_dict = torch.load(args.prior, map_location='cpu')['model']
-        prior.load_state_dict(prior_dict)  
+        if 'ft' in os.path.basename(args.prior):
+            new_prior_dict = OrderedDict()
+            for k, v in prior_dict.items():
+                name = k[7:] # remove 'module.' prefix
+                new_prior_dict[name] = v
+            prior.load_state_dict(new_prior_dict)
+        else:
+            prior.load_state_dict(prior_dict)  
         prior = torch.nn.DataParallel(prior).cuda()
         for p in prior.parameters():
             p.requires_grad = False
@@ -480,6 +486,7 @@ def main(args: argparse.Namespace):
         start_epoch = checkpoint['epoch'] + 1
 
     elif args.pretrain:
+        print('Resuming from pre-trained checkpoint....')
         pretrained_dict = torch.load(args.pretrain, map_location='cpu')['student']
         model_dict = student.state_dict()
         # remove keys from pretrained dict that doesn't appear in model dict
