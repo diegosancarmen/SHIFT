@@ -62,15 +62,24 @@ class MiniRGBD(Body16KeypointDataset):
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/sarosij/MiniRGBD/MiniRGBD.npy', allow_pickle=True).item()
+        data = np.load('/data/AmitRoyChowdhury/InfantUDA/SHIFT/lib/datasets/infant_annotations/MiniRGBD.npy', allow_pickle=True).item()
+        # data = np.load('/home/coeguest/hdelacruz/DAIP/Experiments_2024/102024/SHIFT/prior/MPII/MPII.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             img_name = item.split('_')[1] + '_' + item.split('_')[-1].replace('.txt', '.png')
             img_path = os.path.join(root, f"{item.split('_')[0]}/rgb", img_name)
             self.samples.append((img_path, data[item]['pose_2d']))
+        # for _, item in enumerate(tqdm(data.keys())):
+        #     if split in ['train', 'prior']:
+        #         image_root = "/data/AmitRoyChowdhury/mpii/images"
+        #         item_name = item.split(".")[0]
+        #         img_path = os.path.join(image_root, f"{item_name}.jpg")
+        #         self.samples.append((img_path, data[item]))
+
         #self.images, self.db_2d, self.db_3d, self.frame_names = self.read_data() #image, pose_2d, pose_3d, frame_name
         
         self.joints_index = (7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21)
+        # self.joints_index = (0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15)
         self.visible = np.ones(16, dtype=np.float32)
 
         super(MiniRGBD, self).__init__(root, samples=self.samples, transforms=transforms, image_size=image_size, **kwargs)

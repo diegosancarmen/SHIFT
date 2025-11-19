@@ -34,21 +34,7 @@ def dist_calc(quer_pose, nn_poses, k_dist, geodesic=False):
     return val, idx
 
 def perturb_human_pose(keypoints, dispersion=8):
-    # pairs = [
-    #     [8,9],   #0,-1
-    #     [2,8],   #1,0
-    #     [3,8],   #2,0
-    #     [12,8],  #3,0
-    #     [13,8],  #4,0
-    #     [1,2],   #5,1
-    #     [6,1],   #6,5 #[0,1]
-    #     [4,3],   #7,2
-    #     [5,4],   #8,7
-    #     [11,12], #9,3
-    #     [10,11], #10,9
-    #     [17,16], #11,4
-    #     [15,17]  #12,11
-    # ]
+
     pairs = [
         [8,9],   #0,-1
         [2,8],   #1,0
@@ -64,6 +50,22 @@ def perturb_human_pose(keypoints, dispersion=8):
         [14,13], #11,4
         [15,14]  #12,11
     ]
+        
+    # pairs = [
+    #             [6, 7],
+    #             [6, 7],
+    #             [6, 7],
+    #             [13, 7],
+    #             [12, 7],
+    #             [4, 3],
+    #             [5, 4],
+    #             [1, 2],
+    #             [0, 1],
+    #             [14, 13],
+    #             [15, 14],
+    #             [11, 12], 
+    #             [10, 12],
+    #         ]  
     K = len(pairs) 
     # get orientations
     orientations = np.zeros((K,2))
@@ -91,7 +93,7 @@ def main(args):
     ])
     pose_dataset = datasets.__dict__[args.dset]
     # For SyRIP, split = 'prior', MiniRGBD, split = 'train'
-    og_pose_dataset = pose_dataset(root=args.dset_root, split='train', transforms=transform,
+    og_pose_dataset = pose_dataset(root=args.dset_root, split='prior', transforms=transform,
                                           image_size=image_size, heatmap_size=heatmap_size)
     N = len(og_pose_dataset)
     

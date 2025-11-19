@@ -13,7 +13,7 @@ import torch
 import torch.nn as nn
 
 def generate_target(joints, joints_vis, heatmap_size, sigma, image_size):
-    """Generate heatamap for joints.
+    """Generate heatmap for joints.
 
     Args:
         joints: (K, 2)

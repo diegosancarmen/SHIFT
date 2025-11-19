@@ -387,8 +387,12 @@ def main(args: argparse.Namespace):
     train_source_loader = DataLoader(train_source_dataset, batch_size=args.batch_size,
                                      shuffle=True, num_workers=args.workers, pin_memory=True, drop_last=True)
     #Change the split to 'validate' for oracle results. 
-    val_source_dataset = source_dataset(root=args.source_root, split='test', transforms=val_transform,
+    if args.mode == 'oracle':
+        val_source_dataset = source_dataset(root=args.source_root, split='validate', transforms=val_transform,
                                         image_size=image_size, heatmap_size=heatmap_size)
+    else:
+        val_source_dataset = source_dataset(root=args.source_root, split='test', transforms=val_transform,
+                                            image_size=image_size, heatmap_size=heatmap_size)
     val_source_loader = DataLoader(val_source_dataset, batch_size=args.test_batch, shuffle=False, pin_memory=True)
 
     target_dataset = datasets.__dict__[args.target_train]

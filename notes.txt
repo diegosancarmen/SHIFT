@@ -137,3 +137,16 @@ noseVertex #24
 UDA joint indices order:
 SURREAL: 7, 4, 1, 2, 5, 8, 0, 9, 12, 15, 20, 18, 13, 14, 19, 21
 MINIRGBD: 7, 4, 1, 2, 5, 8, 6, 9, 12, 15, 20, 18, 16, 17, 19, 21
+
+
+#Ocl-LSP
+'checkpoints/LSP_occl_ours_pose_resnet101/checkpoints_2024-04-28-01_01_13/best_pt.pth'
+'checkpoints/udape_LSP_occl_pose_resnet101/checkpoints_2024-05-04-14_50_04/best.pth'
+'checkpoints/LSP_occl_ours_pose_resnet101/checkpoints_2024-04-28-01_01_13/best.pth'
+
+#Ocl-udape_H36M_occl
+
+'checkpoints/udape_H36M_occl_pose_resnet101/checkpoints_2024-05-04-14_50_04/best.pth'
+
+#Clean LSP
+
