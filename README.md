@@ -1,7 +1,8 @@
-# Exploiting Synthetic Adult Datasets for Infant Pose Estimation
+# [Leveraging Synthetic Adult Datasets for Unsupervised Infant Pose Estimation, CVPR 2025](https://openaccess.thecvf.com/content/CVPR2025W/ABAW/html/Bose_Leveraging_Synthetic_Adult_Datasets_for_Unsupervised_Infant_Pose_Estimation_CVPRW_2025_paper.html)
 
-Code for SHIFT: Exploiting Synthetic Adult Datasets for Infant Pose Estimation
-Sarosij Bose, Hannah Dela Cruz, Arindam Dutta, Elena Kokkoni, Konstantinos Karydis, Amit K. Roy Chowdhury
+Code for [Leveraging Synthetic Adult Datasets for Unsupervised Infant Pose Estimation, CVPR 2025](https://openaccess.thecvf.com/content/CVPR2025W/ABAW/html/Bose_Leveraging_Synthetic_Adult_Datasets_for_Unsupervised_Infant_Pose_Estimation_CVPRW_2025_paper.html)
+
+[Sarosij Bose](https://sarosijbose.github.io/), [Hannah Dela Cruz](https://sites.google.com/view/hannah-dela-cruz-a-portfolio/hannah-dela-cruz-a-portfolio?authuser=0), [Arindam Dutta](https://vcg.ece.ucr.edu/people/arindam-dutta-0), [Elena Kokkoni](https://profiles.ucr.edu/elena.kokkoni), [Konstantinos Karydis](https://profiles.ucr.edu/konstantinos.karydis), and [Amit Kumar Roy Chowdhury](https://vcg.engr.ucr.edu/amit)
 
 # Introduction
 
@@ -18,6 +19,19 @@ From left to right: keypoint predictions from a baseline adult human pose estima
 </p>
 
 SHIFT leverages the mean-teacher framework ([Tarvainen et al., 2017](https://arxiv.org/abs/1703.01780)) to adapt a model pretrained on a labeled adult source dataset $(x_s, y_s)$ to unlabeled infant target images $(x_t)$. To address anatomical variations, SHIFT employs an infant pose prior $\theta_p$ to produce plausibility scores for each prediction of the student model $\mathcal{M}_s$ and, to handle self-occlusions we employ an off-the-model $F_{seg}$ and our learned Kp2Seg module $(G)$ to perform image-pose visibility alignment
+
+**Bibtex**
+```
+@InProceedings{Bose_2025_CVPR,
+                author    = {Bose, Sarosij and Cruz, Hannah Dela and Dutta, Arindam and Kokkoni, Elena and Karydis, Konstantinos and Chowdhury, Amit Kumar Roy},
+                title     = {Leveraging Synthetic Adult Datasets for Unsupervised Infant Pose Estimation},
+                booktitle = {Proceedings of the Computer Vision and Pattern Recognition Conference (CVPR) Workshops},
+                month     = {June},
+                year      = {2025},
+                pages     = {5562-5571}
+            }
+            }
+```
 
 # Usage
 
