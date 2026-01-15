@@ -51,7 +51,7 @@ See `prior` folder for instructions.
 
 **Keypoint-to-Segmentation Module Training**
 
-```python train_keypoint_to_segmentation.py --dset-root /data/AmitRoyChowdhury/dripta/surreal_processed --dset SURREAL --arch pose_resnet101 --image-size 256 --heatmap-size 64 --batch-size 32 --log path/to/log/directory --lr 0.0003 --workers 2 --seg-threshold 0.5 --iters-per-epoch 500 --epochs 30 --seed 0 --print-freq 100 --save-dir path/to/save/directory```
+```python train_keypoint_to_segmentation.py --dset-root path/to/surreal --dset SURREAL --arch pose_resnet101 --image-size 256 --heatmap-size 64 --batch-size 32 --log path/to/log/directory --lr 0.0003 --workers 2 --seg-threshold 0.5 --iters-per-epoch 500 --epochs 30 --seed 0 --print-freq 100 --save-dir path/to/save/directory```
 
 # Experiments
 
