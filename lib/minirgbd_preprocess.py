@@ -69,8 +69,8 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Preprocess Target dataset')
     parser.add_argument('--dset', type=str, default='MiniRGBD',
                         help='target pose dataset')
-    parser.add_argument('--root', type=str, default='/data/AmitRoyChowdhury/MINI-RGBD_web', help='root path of the target dataset')
-    parser.add_argument('--save-dir', type=str, default='/data/AmitRoyChowdhury/sarosij/MiniRGBD', help='save path of the source dataset')
+    parser.add_argument('--root', type=str, default='/path/to/MINI-RGBD_web', help='root path of the target dataset')
+    parser.add_argument('--save-dir', type=str, default='/path/to/MiniRGBD', help='save path of the source dataset')
     
     args = parser.parse_args()
     main(args)
