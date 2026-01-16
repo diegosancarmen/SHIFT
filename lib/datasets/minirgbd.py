@@ -63,7 +63,6 @@ class MiniRGBD(Body16KeypointDataset):
         # Load data
         self.samples = []
         data = np.load('/path/to/InfantUDA/SHIFT/lib/datasets/infant_annotations/MiniRGBD.npy', allow_pickle=True).item()
-        # data = np.load('/home/coeguest/hdelacruz/DAIP/Experiments_2024/102024/SHIFT/prior/MPII/MPII.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             img_name = item.split('_')[1] + '_' + item.split('_')[-1].replace('.txt', '.png')
