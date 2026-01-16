@@ -62,7 +62,7 @@ class MiniRGBD(Body16KeypointDataset):
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/InfantUDA/SHIFT/lib/datasets/infant_annotations/MiniRGBD.npy', allow_pickle=True).item()
+        data = np.load('/path/to/InfantUDA/SHIFT/lib/datasets/infant_annotations/MiniRGBD.npy', allow_pickle=True).item()
         # data = np.load('/home/coeguest/hdelacruz/DAIP/Experiments_2024/102024/SHIFT/prior/MPII/MPII.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
@@ -71,7 +71,7 @@ class MiniRGBD(Body16KeypointDataset):
             self.samples.append((img_path, data[item]['pose_2d']))
         # for _, item in enumerate(tqdm(data.keys())):
         #     if split in ['train', 'prior']:
-        #         image_root = "/data/AmitRoyChowdhury/mpii/images"
+        #         image_root = "/path/to/mpii/images"
         #         item_name = item.split(".")[0]
         #         img_path = os.path.join(image_root, f"{item_name}.jpg")
         #         self.samples.append((img_path, data[item]))
