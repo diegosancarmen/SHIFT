@@ -150,9 +150,9 @@ def main(args):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Train prior')
 
-    parser.add_argument("--data-root", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/processed',
+    parser.add_argument("--data-root", type=str, default='/path/to/prior_data/MiniRGBD/processed',
                         help="file containing clean poses")
-    parser.add_argument("--out-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/ckpts',
+    parser.add_argument("--out-dir", type=str, default='/path/to/prior_data/MiniRGBD/ckpts',
                         help="directory to save all poses")
     parser.add_argument("--ftpath", type=str, help="directory to resume fine-tuning from")
     parser.add_argument("--mode", type=str, choices=['train', 'fine-tune'], default='train',
