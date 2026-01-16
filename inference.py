@@ -1,4 +1,4 @@
-# python inference.py --image-path '/data/AmitRoyChowdhury/MINI-RGBD_web/01/rgb/syn_00100.png' --output-dir 'inference' --uda-path 'checkpoints/surreal2mini_1/syn2syn_pose_resnet101/checkpoints_2024-06-09-00_17_17/best.pth' --num-keypoints 16 --image-size 256
+# python inference.py --image-path 'path/to/MINI-RGBD_web/01/rgb/syn_00100.png' --output-dir 'inference' --uda-path 'checkpoints/surreal2mini_1/syn2syn_pose_resnet101/checkpoints_2024-06-09-00_17_17/best.pth' --num-keypoints 16 --image-size 256
 import argparse
 import os
 import re
