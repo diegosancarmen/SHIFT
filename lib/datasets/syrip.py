@@ -40,18 +40,18 @@ class SyRIP(Body16KeypointDataset):
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/InfantUDA/SHIFT/lib/datasets/infant_annotations/SyRIP_all.npy', allow_pickle=True).item()
+        data = np.load('/path/to/InfantUDA/SHIFT/lib/datasets/infant_annotations/SyRIP_all.npy', allow_pickle=True).item()
         # data = np.load('/home/coeguest/hdelacruz/DAIP/Experiments_2024/102024/SHIFT/prior/RePoGen/RePoGen.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             if split in ['train', 'prior']:
-                image_root = "/data/AmitRoyChowdhury/SyRIP/data/syrip/images/train_infant"
+                image_root = "/path/to/SyRIP/data/syrip/images/train_infant"
                 # image_root = "/home/coeguest/hdelacruz/DAIP/Experiments_2024/102024/RePoGen/RePoGen/top_and_bottom"
                 img_path = os.path.join(image_root, f"train{item:05}.jpg")
                 # img_path = os.path.join(image_root, f"{item}.jpg")
 
             elif split == "validate":
-                image_root = "/data/AmitRoyChowdhury/SyRIP/data/syrip/images/validate_infant"
+                image_root = "/path/to/SyRIP/data/syrip/images/validate_infant"
                 img_path = os.path.join(image_root, f"test{item}.jpg")
                 if not os.path.isfile(img_path):
                     print(".", end = " ")
