@@ -110,7 +110,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='PRDA Inference')
     parser.add_argument('--image-path', type=str, required=True, help='Path to the input image')
     parser.add_argument('-d', '--dataset', default='SURREAL', type=str, help='Dataset name')
-    parser.add_argument('--root', default='/data/AmitRoyChowdhury/dripta/surreal_processed', help='root path of the dataset')
+    parser.add_argument('--root', default='/path/to/surreal_processed', help='root path of the dataset')
     parser.add_argument('--output-dir', type=str, required=True, help='Directory to save the outputs')
     parser.add_argument('--uda-path', type=str, required=True, help='Path to the UDA model checkpoint')
     parser.add_argument('--arch', type=str, default='pose_resnet101', help='Model architecture')
