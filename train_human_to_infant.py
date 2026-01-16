@@ -603,8 +603,8 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description='Source Only for Keypoint Detection Domain Adaptation')
     # dataset parameters
-    parser.add_argument('source_root', default='/data/AmitRoyChowdhury/dripta/surreal_processed', help='root path of the source dataset')
-    parser.add_argument('target_root', default='/data/AmitRoyChowdhury/MINI-RGBD_web', help='root path of the target dataset')
+    parser.add_argument('source_root', default='/path/to/surreal_processed', help='root path of the source dataset')
+    parser.add_argument('target_root', default='/path/to/MINI-RGBD_web', help='root path of the target dataset')
     parser.add_argument('-s', '--source', help='source domain(s)')
     parser.add_argument('-t', '--target', help='target domain(s)')
     parser.add_argument('--target-train', help='target domain(s)')
