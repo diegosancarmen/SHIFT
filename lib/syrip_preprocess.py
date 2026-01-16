@@ -5,7 +5,7 @@ import random
 
 d = {'train':{},'validate':{}, 'prior':{}}
 
-root = "/data/AmitRoyChowdhury/SyRIP/data/syrip/annotations/"
+root = "/path/to/SyRIP/data/syrip/annotations/"
 
 train_data = os.path.join(root, "200R_1000S/person_keypoints_train_infant.json")
 validate_data = os.path.join(root, "validate500/person_keypoints_validate_infant.json")
@@ -43,5 +43,5 @@ for key in all_real_keys:
 print(len(list(d['prior'].keys())))
 print(len(list(d['train'].keys())))
 
-np.save('/data/AmitRoyChowdhury/sarosij/SyRIP/splits/SyRIP_all.npy', d)
+np.save('/path/to/SyRIP/splits/SyRIP_all.npy', d)
 print('Data Preprocessed!')
