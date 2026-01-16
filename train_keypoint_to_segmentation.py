@@ -174,7 +174,7 @@ if __name__ == '__main__':
 
     parser.add_argument('--dset', type=str, default='SURREAL',
                         help='keypoint to segmentation mask dataset')
-    parser.add_argument("--dset-root", type=str, default='/data/AmitRoyChowdhury/dripta/surreal_processed',
+    parser.add_argument("--dset-root", type=str, default='/path/to/surreal_processed',
                         help="root path of the source dataset")
     parser.add_argument('-a', '--arch', metavar='ARCH', default='pose_resnet101',
                         choices=architecture_names,
@@ -203,7 +203,7 @@ if __name__ == '__main__':
                         help='seed for initializing training.')
     parser.add_argument("--print-freq", type=int, default=100, 
                         help='print frequency (default: 100)')
-    parser.add_argument("--save-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/kp2seg_data/',
+    parser.add_argument("--save-dir", type=str, default='path/to/kp2seg_data/',
                         help="where to save encoder model")
     args = parser.parse_args()
     main(args)
