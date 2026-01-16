@@ -146,7 +146,7 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Create noisy data for learning prior')
     parser.add_argument('--dset', type=str, default='MiniRGBD',
                         help='prior pose dataset')
-    parser.add_argument('--dset-root', type=str, default='/data/AmitRoyChowdhury/MINI-RGBD_web',
+    parser.add_argument('--dset-root', type=str, default='/path/to/MINI-RGBD_web',
                         help='root path of the source dataset')
     parser.add_argument('--image-size', type=int, default=256,
                         help='input image size')
@@ -156,7 +156,7 @@ if __name__ == '__main__':
                         help="K nearest neighbour")
     parser.add_argument("--k-faiss", type=int, default=500, 
                         help="K nearest neighbour FAISS")
-    parser.add_argument("--save-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/',
+    parser.add_argument("--save-dir", type=str, default='/path/to/prior_data/',
                         help="where to save poses")
     args = parser.parse_args()
     main(args)
