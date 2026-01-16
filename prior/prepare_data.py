@@ -36,11 +36,11 @@ if __name__ == '__main__':
 
     parser.add_argument('--dset', type=str, default='MiniRGBD',
                         help='target dataset')
-    parser.add_argument("--clean-pose-file", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/K_5/raw/clean_poses.npy',
+    parser.add_argument("--clean-pose-file", type=str, default='/path/to/prior_data/MiniRGBD/K_5/raw/clean_poses.npy',
                         help="file containing clean poses")
-    parser.add_argument("--noisy-pose-file", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/MiniRGBD/K_5/raw/noisy_poses.npy',
+    parser.add_argument("--noisy-pose-file", type=str, default='/path/to/prior_data/MiniRGBD/K_5/raw/noisy_poses.npy',
                         help="file containing noisy poses")
-    parser.add_argument("--save-dir", type=str, default='/data/AmitRoyChowdhury/sarosij/prior_data/',
+    parser.add_argument("--save-dir", type=str, default='/path/to/prior_data/',
                         help="directory to save all poses")
     
     args = parser.parse_args()
