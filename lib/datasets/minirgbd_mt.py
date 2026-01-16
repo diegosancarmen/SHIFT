@@ -61,7 +61,7 @@ class MiniRGBD_mt(Body16KeypointDataset):
 
         # Load data
         self.samples = []
-        data = np.load('/data/AmitRoyChowdhury/InfantUDA/SHIFT/lib/datasets/infant_annotations/MiniRGBD.npy', allow_pickle=True).item()
+        data = np.load('/path/to/InfantUDA/SHIFT/lib/datasets/infant_annotations/MiniRGBD.npy', allow_pickle=True).item()
         data = data[split]
         for _, item in enumerate(tqdm(data.keys())):
             img_name = item.split('_')[1] + '_' + item.split('_')[-1].replace('.txt', '.png')
@@ -135,7 +135,7 @@ class MiniRGBD_mt(Body16KeypointDataset):
         return image_stu, target_stu, target_weight_stu, meta_stu, images_tea, targets_tea, target_weights_tea, metas_tea
     
     # def read_data(self, root, split):
-    #     data = np.load('/data/AmitRoyChowdhury/sarosij/MINI-RGBD.npy', allow_pickle=True).item()
+    #     data = np.load('/path/to/MINI-RGBD.npy', allow_pickle=True).item()
     #     data = data[split]
         
     #     imgs = []
